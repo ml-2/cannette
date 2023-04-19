@@ -1,16 +1,9 @@
-(import ./emitlib1 :prefix "")
-(import ./cppjan1-emit :prefix "")
+(import ./cppjan1-lib :prefix "")
 
 # Macros #
 
 (defdyn-local cppjan max-depth
   `How many recursive macro expansions to apply before giving up.`)
-
-(defn is-macro?
-  `Returns true if the symbol is bound to a cppjan macro at the toplevel.`
-  [symbol]
-  (def sym (dyn symbol))
-  (truthy? (and (table? sym) (sym :cppjan/macro))))
 
 (defn- c-unquote [expr]
   (eval expr))
@@ -21,7 +14,7 @@
 (defn- splice? [exp]
   (and (tuple? exp) (= (length exp) 2) (= (exp 0) 'splice)))
 
-(defn dosplice
+(defn- dosplice
   `If the argument is not a tuple, returns it. Otherwise applies splice
   operators in the given tuple and returns the result, preserving the tuple type
   and the sourcemap.`
@@ -73,65 +66,74 @@
         (error (string "More than " max-depth " recursive macro invocations")))))
   (dosplice (keep-syntax exprs expanded)))
 
-(defn apply-macros
-  `Applies cppjan macros to the given code and returns the result. Macro names
-  are determined based on which bindings in the environment have the
-  :cppjan/macro metadata set to true. A source-name string must be given for
-  error messages to be able to properly display the error's source location.
+(defmacro def-macros [macro-kw filetype-kw]
+  ~(upscope
 
-   By default macros will be recursively expanded up to 500 times before giving
-   an error. To change this limit, set the dynamic binding :cppjan/max-depth to
-   a higher value.`
-  [source-name exprs]
-
-  (def known-symbols @{})
-  (defn cmacro? [symbol]
-    (when (nil? (known-symbols symbol))
-      (set (known-symbols symbol) (is-macro? symbol)))
-    (known-symbols symbol))
-
-  (with-dyns []
-    {:code (am-inner cmacro? exprs)
-     :source-name source-name}))
-
-(defn add-to-project
-  `Assigns the code to the given file-name in the project. The file name should
+    (defn add-to-project
+      `Assigns the code to the given file-name in the project. The file name should
   be a string. The macros in the code must already have been expanded using
   apply-macros.`
-  [project name expanded-code]
-  (set (project name) expanded-code))
+      [project name expanded-code]
+      (set (project name) expanded-code))
 
-(defmacro defile
-  `Takes a cppjan project, a symbol or string representing a file name in the
+    (defn is-macro?
+      `Returns true if the symbol is bound to a cppjan macro at the toplevel.`
+      [symbol]
+      (def sym (dyn symbol))
+      (truthy? (and (table? sym) (sym ,macro-kw))))
+
+    (defn apply-macros
+      `Applies cppjan/xmljan macros to the given code and returns the result.
+  Macro names are determined based on which bindings in the environment have the
+  :cppjan/macro or :xmljan metadata set to true. A source-name string must be
+  given for error messages to be able to properly display the error's source
+  location.
+
+  By default macros will be recursively expanded up to 500 times before giving
+  an error. To change this limit, set the dynamic binding :cppjan/max-depth to
+  a higher value.`
+      [source-name exprs]
+
+      (def known-symbols @{})
+      (defn cmacro? [symbol]
+        (when (nil? (known-symbols symbol))
+          (set (known-symbols symbol) (is-macro? symbol)))
+        (known-symbols symbol))
+
+      (with-dyns []
+        {:code (,am-inner cmacro? exprs)
+         :source-name source-name
+         :filetype ,filetype-kw}))
+
+    (defmacro defile
+      `Takes a cppjan project, a symbol or string representing a file name in the
   project, optional definition metadata like in def, and finally code. The
   metadata is the same as what is allowed inside def statements.
 
   Runs cppjan macros on the code and sets the result into the project for the
   given name (as a string). If the name was a symbol, also defines that symbol
   to the expanded code.`
-  [project name & more]
-  (assert (or (symbol? name) (string? name)))
-  (def meta (take-while |(not (tuple? $)) more))
-  (def result (apply-macros
-               (or (dyn *current-file*) "unknown source")
-               (keep-syntax! more (tuple/slice more (length meta)))))
-  (if (symbol? name)
-    ~(upscope
-      (def ,name ,;meta ',result)
-      (set (,project ,(string name)) ,name))
-    ~((set (,project ,(string name)) ,result))))
+      [project name & more]
+      (assert (or (symbol? name) (string? name)))
+      (def meta (take-while |(not (tuple? $)) more))
+      (def result (apply-macros
+                   (or (dyn *current-file*) "unknown source")
+                   (keep-syntax! more (tuple/slice more (length meta)))))
+      (if (symbol? name)
+        ~(upscope
+          (def ,name ,;meta ',result)
+          (set (,project ,(string name)) ,name))
+          ~((set (,project ,(string name)) ,result))))
 
-(defn enable-macro
-  `Sym must be a symbol which is defined as a function or macro in the
+    (defn enable-macro
+      `Sym must be a symbol which is defined as a function or macro in the
   environment. Enables this macro to be used inside C code.`
-  [sym]
-  (set ((dyn sym) :cppjan/macro) true))
+      [sym]
+      (set ((dyn sym) ,macro-kw) true))
 
-(each sym ['-> '->>]
-  (enable-macro sym))
-
-(defmacro defmacro
-  `Same as the core defmacro, except that the :cppjan/macro metadata is also set
-  to true. This enables this macro to be used in cppjan code.`
-  [name & more]
-  (apply defn name :cppjan/macro :macro more))
+    (defmacro defmacro
+      `Same as the core defmacro, except that the :cppjan/macro or :xmljan/macro
+  metadata is also set to true. This enables this macro to be used in
+  cppjan/xmljan code.`
+      [name & more]
+      (apply defn name ,macro-kw :macro more))))

@@ -1,4 +1,5 @@
-(import ./emitlib1 :prefix "")
+(import ./cppjan1-lib :prefix "")
+(import ./cppjan1-macros :as cm)
 
 # Private dynamics #
 
@@ -87,7 +88,9 @@
 
 (defn emit-xml [xml]
   (var context (or-syntax xml nil))
-  (emit-inner xml context))
+  (each elem xml
+    (emit-inner elem (or-syntax elem context))
+    (set context (or-syntax elem context))))
 
 (defn emit [file-data &opt out]
   (with-dyns [*source-name* (file-data :source-name)
@@ -101,3 +104,5 @@
   (def out @"")
   (emit file-data out)
   (string out))
+
+(cm/def-macros :xmljan/macro :xml)

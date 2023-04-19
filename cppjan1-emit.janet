@@ -1,4 +1,4 @@
-(import ./emitlib1 :prefix "")
+(import ./cppjan1-lib :prefix "")
 
 # Lib #
 
