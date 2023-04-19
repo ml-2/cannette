@@ -569,6 +569,7 @@
                       (cprin " : ")
                       (emit-expr (expr 3) (or-syntax (expr 3) context) true))
                 (do
+                  # TODO: If the name starts with "." or ".->", consider it a method call.
                   # Regular function call
                   (emit-ident name context)
                   (emit-funargs expr context)))))
@@ -672,11 +673,11 @@
 (varfn emit-def [expr context &opt indent?]
   (def kind (keyword (expr 0)))
 
-  (unless ({3 true 4 true} (length expr))
+  (unless (or ({3 true 4 true} (length expr))
+              (and (= kind :type) (= (length expr) 2)))
     (cerr context "Wrong number of arguments to %s" kind))
 
   (def specifiers (expr 1))
-  (def declarator (expr 2))
 
   (unless (tuple-b? specifiers)
     (cerr (or-syntax specifiers context) "Expected bracketed tuple for specifiers list"))
@@ -693,9 +694,11 @@
     (unless (= (inc i) (length specifiers))
       (cprin " ")))
 
-  (needs-space)
-  (emit-declarator kind declarator (or-syntax declarator specifiers context))
-  (no-needs-space)
+  (def declarator (if (> (length expr) 2) (expr 2) nil))
+  (when (> (length expr) 2)
+    (needs-space)
+    (emit-declarator kind declarator (or-syntax declarator specifiers context))
+    (no-needs-space))
 
   (when (= (length expr) 4)
     (when (= kind :type)
@@ -788,6 +791,8 @@
                        (cprint ";"))
               :type (do (emit-def expr (or-syntax expr context) true)
                         (cprint ";"))
+              :class (do (emit-def ['type (tuple/brackets expr)] context)
+                         (cprint ";"))
               :defn (emit-defn expr (or-syntax expr context))
               :upscope (for i 1 (length expr)
                          (emit-toplevel (expr i) (or-syntax (expr i) context)))
