@@ -12,6 +12,12 @@
 (defn- indent+ [] (buffer/push-string (indent) "  "))
 (defn- indent- [] (buffer/popn (indent) 2))
 
+(defdyn-local cppjan needs-backslash
+  `Indicate that newlines must be backslashed.`)
+(defn needs-backslash? [] (dyn *needs-backslash*))
+(defn needs-backslash [] (setdyn *needs-backslash* true))
+(defn no-needs-backslash [] (setdyn *needs-backslash* false))
+
 (defdyn-local cppjan line-length `Length of the current line`)
 (defn- line-length [] (or (dyn *line-length*) (setdyn *line-length* 0)))
 (defn- push-line-length [arg] (setdyn *line-length* (+ (line-length) (length arg))))
@@ -25,7 +31,11 @@
 
 (defn- cprint [& args]
   (new-line-length) # set line length to 0
-  (print ;args))
+  (if (needs-backslash?)
+    (do
+      (prin ;args)
+      (print " \\"))
+    (print ;args)))
 
 (defdyn-local cppjan needs-space
   `Used to temporarily store that a space will be needed if more is printed.`)
@@ -141,9 +151,23 @@
     (cprint `"` include `"`)))
 
 (defn- emit-@def [expr context]
-  # TODO
-  (cerr context "@def is unimplemented")
-  )
+  (cond
+    (= (length expr) 2)
+    (do
+      (cprin "#define ")
+      # TODO: validate
+      (emit-ident (expr 1) (or-syntax (expr 1) context))
+      (cprint))
+    (= (length expr) 3)
+    (do
+      (cprin "#define ")
+      (emit-ident (expr 1) (or-syntax (expr 1) context))
+      (cprin " ")
+      (needs-backslash)
+      (emit-expr (expr 2) (or-syntax (expr 2) context))
+      (no-needs-backslash)
+      (cprint))
+    (cerr context "Invalid number of arguments to @def")))
 
 (defn- emit-@defn [expr context]
   # TODO
@@ -726,6 +750,7 @@
             (case (keyword name)
               :@include (emit-@include expr (or-syntax expr context))
               :@def (emit-@def expr (or-syntax expr context))
+              # TODO: Other kinds of @def for things that aren't expressions
               :@defn (emit-@defn expr (or-syntax expr context))
               :def (do (emit-def expr (or-syntax expr context) true)
                        (cprint ";"))
