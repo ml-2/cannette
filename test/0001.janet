@@ -52,7 +52,7 @@ static void throw_error(int error) {
    name
    (defn [static void] throw-error
      `Convert a git error into a janet panic.`
-     [(def [int] error)] []
+     [(def [int] error)]
      (def [git-error] (* e const) (git-error-last))
      (if (= e NULL)
        (janet-panicf `Git error with code %d` (janet-wrap-integer error))

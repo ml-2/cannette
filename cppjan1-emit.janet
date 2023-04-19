@@ -384,8 +384,8 @@
                      (no-needs-space))
                 :&& (cerr context "Unimplemented declarator name %p" name) # TODO
                 :fn (do
-                      (when (not= (length decl) 4)
-                        (cerr context "Expected 3 args to fn"))
+                      (when (not= (length decl) 3)
+                        (cerr context "Expected 2 args to fn"))
 
                       (def fn-decl (decl 1))
 
@@ -393,7 +393,12 @@
                       (when (not (tuple-b? params))
                         (cerr context "Expected brackets tuple for params"))
 
-                      (def fn-info (decl 3))
+                      (def [params fn-info]
+                        (if (and (not (empty? params))
+                                 (tuple-b? (last params)))
+                          [(keep-syntax params (tuple/slice params 0 (dec (length params))))
+                           (last params)]
+                          [params (keep-syntax params '[])]))
 
                       (emit-declarator kind fn-decl (or-syntax fn-decl context))
                       (if (= params '[void])
@@ -727,8 +732,8 @@
         (emit-expr init (or-syntax init declarator specifiers context))))))
 
 (varfn emit-defn [expr context]
-  (when (< (length expr) 5)
-    (cerr context "Expected at least 4 arguments to defn"))
+  (when (< (length expr) 4)
+    (cerr context "Expected at least 3 arguments to defn"))
   (var index 0)
   (def specifiers (expr (++ index)))
   (def declarator (expr (++ index)))
@@ -737,11 +742,6 @@
     (if (< (length expr) (+ index 2))
       (cerr context "Params missing for defn")
       (expr (++ index))))
-  (def fn-info
-    (if (< (length expr) (+ index 2))
-      (cerr context "Function info missing for defn")
-      (expr (++ index))))
-
 
   (when doc
     (var first true)
@@ -760,7 +760,7 @@
 
   (emit-def ['def
              specifiers
-             ['fn declarator params fn-info]]
+             ['fn declarator params]]
             context
             true)
   (cprin " ")
