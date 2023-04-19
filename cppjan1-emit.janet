@@ -185,7 +185,7 @@
   # TODO: Use normalize
   (unless (symbol? name)
     (cerr context "Expected a symbol for the name"))
-  (cprin name)
+  (emit-ident name context)
   (cprin "<")
   (var ctx context)
   (var did-indent false)
@@ -218,7 +218,7 @@
     :string (cerr context "Invalid statement %p" expr)
     :number (cerr context "Invalid statement %p" expr)
     :brackets (cerr context "Invalid statement (tuple with brackets)")
-    :symbol (cerr context "Constant statements are unimplemented") # TODO: This is probably a macro.
+    :symbol (do (emit-indent) (emit-ident expr context) (cprint))
     :call (do
             (def name (expr 0))
             (unless (symbol? name)
@@ -233,7 +233,10 @@
                        (unless (empty? (indent))
                          (set deindent? true)
                          (indent-))
-                       (emit-ident (expr 1) context)
+                       (for i 1 (length expr)
+                         (emit-ident (expr i) context)
+                         (unless (= (inc i) (length expr))
+                           (cprin " ")))
                        (cprint ":")
                        (when deindent? (indent+)))
               :n! (cprint)
@@ -360,7 +363,25 @@
                           (no-needs-space)))
                 :operator (cerr context "Unimplemented declarator name %p" name) # TODO
                 :... (cerr context "Unimplemented declarator name %p" name) # TODO
-                :& (cerr context "Unimplemented declarator name %p" name) # TODO
+                :& (do
+                     (emit-space?)
+                     (cprin "&")
+                     # TODO: This is largely copied from the pointer code above
+                     (when (< (length decl) 2)
+                       (cerr context "Wrong number of arguments to %p" name))
+                     (def inner-decl (decl 1))
+                     (for i 2 (length decl)
+                       (def elem (decl i))
+                       (cond (and (= (inc i) (length decl)) (tuple-b? elem))
+                             (emit-attributes elem (or-syntax elem context))
+                             (symbol? elem)
+                             (emit-ident elem context)
+                             (cerr (or-syntax elem context) "Invalid metadata %p for pointer declarator" elem))
+                       (if (= (inc i) (length decl))
+                         (needs-space)
+                         (cprin " ")))
+                     (emit-declarator kind inner-decl (or-syntax inner-decl context))
+                     (no-needs-space))
                 :&& (cerr context "Unimplemented declarator name %p" name) # TODO
                 :fn (do
                       (when (not= (length decl) 4)
@@ -426,6 +447,7 @@
     and "&&" or "||" band "&" bor "|" bxor "^"
     << "<<" >> ">>" = "==" not= "!=" > ">" < "<" >= ">=" <= "<=" <=> "<=>"
    . "." .-> "->" .* ".*" .->* ".->*"})
+(def- binops-nospace {'. true '.-> true})
 
 (defn- emit-number [expr context]
   # TODO: By default numeric values, only allow integers before precision is lost.
@@ -450,10 +472,15 @@
   (when with-parens? (cprin ")")))
 
 (defn- emit-binop [expr context &opt with-parens?]
+  (def sym (expr 0))
   (when with-parens?
     (cprin "("))
   (emit-expr (expr 1) (or-syntax (expr 1) context) true)
-  (cprin " " (binops (expr 0)) " ")
+  (unless (binops-nospace sym)
+    (cprin " "))
+  (cprin (binops sym))
+  (unless (binops-nospace sym)
+    (cprin " "))
   (emit-expr (expr 2) (or-syntax (expr 2) context) true)
   (when with-parens?
     (cprin ")")))
@@ -485,11 +512,10 @@
     :symbol (emit-ident expr context)
     :call (do
             (def name (expr 0))
-            (unless (symbol? name)
-              (cerr context "Expected symbol as function name"))
-            # TODO: handle operators, function calls, and so on.
-            # TODO: First, check if it is a *& pattern with a single argument.
             (cond
+              (not (symbol? name))
+              (do (emit-expr name (or-syntax name context))
+                  (emit-funargs expr context))
               (and (peg/match pointers-op-grammar name)
                    (implies (= name '*) (= (length expr) 2)))
               (if (not= (length expr) 2)
@@ -532,6 +558,8 @@
                        (emit-expr (tuple/slice expr 1) (or-syntax (expr 1) context))
                        (when with-parens?
                          (cprin ")")))
+                :<> (do
+                      (emit-template-type expr context))
                 :if (do
                       (when (not= (length expr) 4)
                         (cerr context "Expected exactly 3 arguments to if expression"))
@@ -602,11 +630,13 @@
                 :def (do (emit-def expr context true) (cprint ";"))
                 :do (cerr context "Unimplemented") # TODO: Emit a block
                 :return (do
-                          (unless (= (length expr) 2)
-                            (cerr context "Expected one argument to return"))
+                          (when (> (length expr) 2)
+                            (cerr context "Expected zero or one argument to return"))
                           (emit-indent)
-                          (cprin "return" " ")
-                          (emit-expr (expr 1) (or-syntax (expr 1) context))
+                          (cprin "return")
+                          (when (= (length expr) 2)
+                            (cprin " ")
+                            (emit-expr (expr 1) (or-syntax (expr 1) context)))
                           (cprint ";"))
                 :label (do
                          # TODO: validate
