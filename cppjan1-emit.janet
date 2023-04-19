@@ -236,6 +236,7 @@
                        (emit-ident (expr 1) context)
                        (cprint ":")
                        (when deindent? (indent+)))
+              :n! (cprint)
               :c (do
                    # TODO: validation
                    (cprin (expr 1)))
@@ -616,6 +617,7 @@
                          (emit-ident (expr 1) context)
                          (cprint ":")
                          (when deindent? (indent+)))
+                :n! (cprint)
                 :c (do
                      # TODO: validation
                      (cprin (expr 1)))
@@ -771,6 +773,7 @@
                         (cprin "#endif /* ")
                         (emit-ident (expr 1) context)
                         (cprint " */"))
+              :n! (cprint)
               :c (do
                    # TODO: validation
                    (cprin (expr 1)))
