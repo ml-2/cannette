@@ -4,5 +4,5 @@
 
 (cm/def-macros :cppjan/macro :cpp)
 
-(each sym ['-> '->>]
+(each sym ['-> '->> 'when]
   (enable-macro sym))

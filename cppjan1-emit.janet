@@ -827,7 +827,7 @@
               :c (do
                    # TODO: validation
                    (cprin (expr 1)))
-              (cerr context "Unknown toplevel function") # TODO: Unknown toplevel function. Is probably a macro.
+              (cerr context "Unknown toplevel function %v" name) # TODO: Unknown toplevel function. Is probably a macro.
               ))
     (cerr
      context
