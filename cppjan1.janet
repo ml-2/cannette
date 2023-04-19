@@ -48,6 +48,23 @@
 
 (defdyn-local cppjan indent `Current indent level for cppjan output.`)
 (defn- indent [] (or (dyn *indent*) (setdyn *indent* @"")))
+(defn- indent+ [] (buffer/push-string (indent) "  "))
+(defn- indent- [] (buffer/popn (indent) 2))
+
+(defdyn-local cppjan line-length `Length of the current line`)
+(defn- line-length [] (or (dyn *line-length*) (setdyn *line-length* 0)))
+(defn- push-line-length [arg] (setdyn *line-length* (+ (line-length) (length arg))))
+(defn- new-line-length [] (setdyn *line-length* 0))
+(defn- cprin [& args]
+  (each arg args
+    (unless (or (string? arg) (buffer? arg) (symbol? arg) (keyword? arg))
+      (errorf "Expected string-like, got %v" (type arg)))
+    (push-line-length arg))
+  (prin ;args))
+
+(defn- cprint [& args]
+  (new-line-length) # set line length to 0
+  (print ;args))
 
 (defdyn-local cppjan needs-space
   `Used to temporarily store that a space will be needed if more is printed.`)
@@ -55,7 +72,7 @@
 (defn- no-needs-space [] (setdyn *needs-space* false))
 (defn- emit-space? []
   (when (dyn *needs-space*)
-    (do (prin " ")
+    (do (cprin " ")
         (setdyn *needs-space* false))))
 
 # Gencode #
@@ -116,6 +133,11 @@
                 msg source-name (tuple/sourcemap context)))
     (error (fmt "%s | In file %s" msg source-name))))
 
+(defmacro- cerr [& args]
+  # Call cpperror, but never tail call optimize this call (for a better stack
+  # trace).
+  ['do (keep-syntax (dyn *macro-form*) ['cpperror ;args]) nil])
+
 (defn- normalize-expr [expr context]
   (case (type expr)
     :nil [:symbol (symbol "nil")]
@@ -123,12 +145,12 @@
     :number [:number expr]
     :tuple (if (empty? expr)
              (if (tuple-p? expr)
-               (cpperror context "Empty call is not allowed")
+               (cerr context "Empty call is not allowed")
                [:brackets expr])
              [:call expr])
     :string [:string expr]
     :symbol [:symbol expr]
-    (cpperror context (fmt "Invalid expression %p" expr))))
+    (cerr context (fmt "Invalid expression %p" expr))))
 
 (defn- as-symbol [expr]
   (case (type expr)
@@ -139,46 +161,48 @@
     nil))
 
 (defn- emit-indent []
-  (prin (indent)))
+  (cprin (indent)))
 
 (defn- emit-block-start []
-  (print "{")
-  (buffer/push-string (indent) "  "))
+  (cprint "{")
+  (indent+))
 
 (defn- emit-block-end []
-  (buffer/popn (indent) 2)
+  (indent-)
   (emit-indent)
-  (prin "}"))
+  (cprin "}"))
 
 (var- emit-def nil)
+(var- emit-defn nil)
+(var- emit-statement nil)
 (var- emit-statement-nonest-block nil)
 (var- emit-expr nil)
 
 (defn- emit-ident [ident context]
   (def converted (peg/match ident-conversion-grammar ident))
   (if converted
-    (prin (converted 0))
-    (prin ident)))
+    (cprin (converted 0))
+    (cprin ident)))
 
 (defn- emit-@include [expr context]
   (unless (= (length expr) 2)
-    (cpperror context "Expected 1 argument to @include"))
+    (cerr context "Expected 1 argument to @include"))
   (def include (as-symbol (expr 1)))
   (when (or (not include) (empty? include))
-    (cpperror context "Expected symbol or string as argument to @include"))
-  (prin "#include ")
+    (cerr context "Expected symbol or string as argument to @include"))
+  (cprin "#include ")
   (if ({?dbqt true ?< true} (first include))
-    (print include)
-    (print `"` include `"`)))
+    (cprint include)
+    (cprint `"` include `"`)))
 
 (defn- emit-@def [expr context]
   # TODO
-  (cpperror context "@def is unimplemented")
+  (cerr context "@def is unimplemented")
   )
 
 (defn- emit-@defn [expr context]
   # TODO
-  (cpperror context "@defn is unimplemented")
+  (cerr context "@defn is unimplemented")
   )
 
 (defn- emit-attributes [spec context]
@@ -187,14 +211,15 @@
 
 (defn- emit-template-type [expr context]
   (when (< (length expr) 2)
-    (cpperror context "Expected at least one argument to <>"))
+    (cerr context "Expected at least one argument to <>"))
   (def name (expr 1))
   # TODO: Use normalize
   (unless (symbol? name)
-    (cpperror context "Expected a symbol for the name"))
-  (prin name)
-  (prin "<")
+    (cerr context "Expected a symbol for the name"))
+  (cprin name)
+  (cprin "<")
   (var ctx context)
+  (var did-indent false)
   (for i 2 (length expr)
     (def param (expr i))
     (set ctx (or-syntax param ctx))
@@ -204,10 +229,83 @@
       (emit-ident param context)
       (and (tuple-p? param) (not (empty? param)) (= (param 0) 'type))
       (emit-def param ctx)
-      (cpperror ctx "Invalid template parameter %p" param))
+      (cerr ctx "Invalid template parameter %p" param))
     (unless (= (inc i) (length expr))
-      (prin ", ")))
-  (prin ">"))
+      (if (>= (line-length) 100)
+        (do
+          (unless did-indent
+            (indent+)
+            (set did-indent true))
+          (cprint ",")
+          (emit-indent))
+        (cprin ", "))))
+  (when did-indent
+    (indent-))
+  (cprin ">"))
+
+(defn- emit-class-member [expr context]
+  (def normalized (normalize-expr expr context))
+  (case (normalized 0)
+    :string (cerr context "Invalid statement %p" expr)
+    :number (cerr context "Invalid statement %p" expr)
+    :brackets (cerr context "Invalid statement (tuple with brackets)")
+    :symbol (cerr context "Constant statements are unimplemented") # TODO: This is probably a macro.
+    :call (do
+            (def name (expr 0))
+            (unless (symbol? name)
+              (cerr context "Expected symbol as function name"))
+            (case (keyword name)
+              :def (do (emit-def expr context true) (cprint ";"))
+              :defn (emit-defn expr (or-syntax expr context))
+              :do (cerr context "Unimplemented") # TODO: Emit a block
+              :label (do
+                       # TODO: validate
+                       (var deindent? false)
+                       (unless (empty? (indent))
+                         (set deindent? true)
+                         (indent-))
+                       (emit-ident (expr 1) context)
+                       (cprint ":")
+                       (when deindent? (indent+)))
+              :c (do
+                   # TODO: validation
+                   (cprin (expr 1)))
+              # TODO: other builtins
+              (cerr context "Unknown class member form")))
+    (cerr
+     context
+     "Unknown normalized type %p - this is a bug in cppjan" (normalized 0))))
+
+(defn- emit-class [spec context]
+  (when (< (length spec) 3)
+    (cerr context "Expected at least 2 arguments to class"))
+  (def name (spec 1))
+  (def info (spec 2))
+  (cprin "class ")
+  # TODO: Validate the name
+  (emit-ident name context)
+
+  (unless (tuple-b? info)
+    (cerr (or-syntax info context) "Expected square brackets"))
+
+  (each val info
+    (cond (and (tuple-p? val) (not (empty? val)) (= (val 0) 'extends))
+          (do
+            (cprin " : ")
+            (for i 1 (length val)
+              (def superclass (val i))
+              (unless (and (tuple-p? superclass) (not (empty? superclass)) (= (superclass 0) 'type))
+                (cerr (or-syntax superclass context) "Expected a type for extends"))
+              (emit-def superclass (or-syntax superclass context))))
+          (cerr (or-syntax val context) "Unknown or unimplemented class info")))
+  (unless (= (length spec) 3)
+    (cprin " ")
+    (emit-block-start)
+    (for i 3 (length spec)
+      (emit-class-member (spec i) (or-syntax (spec i) context))
+      )
+    (emit-block-end)
+    ))
 
 (defn- emit-specifier [spec context]
   # TODO: Use normalize
@@ -217,42 +315,53 @@
     (and (tuple-p? spec) (not (empty? spec)) (symbol? (spec 0)))
     (case (keyword (spec 0))
       :<> (emit-template-type spec context)
-      :class nil # TODO
+      :class (emit-class spec context)
       :struct nil # TODO
       :enum nil # TODO
       :union nil # TODO
       :decltype nil # TODO
-      (cpperror
+      (cerr
        context
        "Unknown specifier type - use (<> %p parameters) if it was meant to be a template type" (spec 0)))
-    (cpperror context "Invalid specifier %p" spec)))
+    (cerr context "Invalid specifier %p" spec)))
 
 (defn- emit-declarator [kind decl context]
   # kind can be :type or :def. For the former, the name should be _.
   (def normalized (normalize-expr decl context))
   (case (normalized 0)
-    :string (cpperror context "Invalid declaration %p" decl)
-    :number (cpperror context "Invalid declaration %p" decl)
-    :brackets (cpperror context "Invalid declaration (tuple with brackets)")
+    :string (cerr context "Invalid declaration %p" decl)
+    :number (cerr context "Invalid declaration %p" decl)
+    :brackets (cerr context "Invalid declaration (tuple with brackets)")
     :symbol (if (and (symbol? decl) (= kind :type) (not= decl '_))
-              (cpperror context "The declarator name of a type must be set to _")
+              (cerr context "The declarator name of a type must be set to _")
               (when (= kind :def)
                 (emit-space?)
                 (emit-ident decl context)))
     :call (do
             (def name (decl 0))
             (unless (or (symbol? name) (tuple-b? name))
-              (cpperror context "Invalid function name"))
+              (cerr context "Invalid function name"))
             (cond
               (tuple-b? name)
-              (cpperror context "Unimplemented") # TODO
+              (do
+                (unless ({2 true 3 true} (length decl))
+                  (cerr (or-syntax name context)
+                        "Expected 1 or 2 arguments to array declarator, got %v" (length decl)))
+                (cond (empty? name)
+                      (do
+                        (emit-declarator kind (decl 1) (or-syntax (decl 1) context))
+                        (cprin "[]")
+                        # TODO: Emit attributes
+                        )
+                      (cerr context "Arrays of non-fixed length are not implemented") # TODO
+                      ))
 
               (peg/match pointers-grammar name)
               (do
                 (emit-space?)
-                (prin name)
+                (cprin name)
                 (when (< (length decl) 2)
-                  (cpperror context "Wrong number of arguments to %p" name))
+                  (cerr context "Wrong number of arguments to %p" name))
                 (def inner-decl (decl 1))
                 (for i 2 (length decl)
                   (def elem (decl i))
@@ -260,10 +369,10 @@
                         (emit-attributes elem (or-syntax elem context))
                         (symbol? elem)
                         (emit-ident elem context)
-                        (cpperror (or-syntax elem context) "Invalid metadata %p for pointer declarator" elem))
+                        (cerr (or-syntax elem context) "Invalid metadata %p for pointer declarator" elem))
                   (if (= (inc i) (length decl))
                     (needs-space)
-                    (prin " ")))
+                    (cprin " ")))
                 (emit-declarator kind inner-decl (or-syntax inner-decl context))
                 (no-needs-space))
 
@@ -272,47 +381,70 @@
               (case (keyword name)
                 :decl (do
                         (when (or (< (length decl) 2) (not (symbol? (decl 1))))
-                          (cpperror context "Expected a name for decl"))
+                          (cerr context "Expected a name for decl"))
                         (emit-space?)
-                        (prin (decl 1))
+                        (cprin (decl 1))
                         (when (= (length decl) 3)
                           (needs-space)
                           (emit-attributes (decl 2) (or-syntax (decl 2) context))
                           (no-needs-space)))
-                :operator (cpperror context "Unimplemented declarator name %p" name) # TODO
-                :... (cpperror context "Unimplemented declarator name %p" name) # TODO
-                :& (cpperror context "Unimplemented declarator name %p" name) # TODO
-                :&& (cpperror context "Unimplemented declarator name %p" name) # TODO
+                :operator (cerr context "Unimplemented declarator name %p" name) # TODO
+                :... (cerr context "Unimplemented declarator name %p" name) # TODO
+                :& (cerr context "Unimplemented declarator name %p" name) # TODO
+                :&& (cerr context "Unimplemented declarator name %p" name) # TODO
                 :fn (do
                       (when (not= (length decl) 4)
-                        (cpperror context "Expected 3 args to fn"))
+                        (cerr context "Expected 3 args to fn"))
 
                       (def fn-decl (decl 1))
 
                       (def params (decl 2))
                       (when (not (tuple-b? params))
-                        (cpperror context "Expected brackets tuple for params"))
+                        (cerr context "Expected brackets tuple for params"))
 
                       (def fn-info (decl 3))
 
                       (emit-declarator kind fn-decl (or-syntax fn-decl context))
                       (if (= params '[void])
-                        (prin "(void)")
+                        (cprin "(void)")
                         (do
-                          (prin "(")
+                          (cprin "(")
+                          (var did-indent false)
                           (for i 0 (length params)
                             (def param (params i))
                             (unless (and (tuple-p? param) (not (empty? param))
                                          (= 'def (param 0)))
-                              (cpperror context "Expected a definition for a param"))
+                              (cerr context "Expected a definition for a param"))
                             (emit-def param (or-syntax param params context))
                             (unless (= (inc i) (length params))
-                              (prin ", ")))
-                          (prin ")")))
-                      # TODO: Emit fn-info
-                      )
-                (cpperror context "Unknown declarator name %p" name))))
-     (cpperror
+                              (if (>= (line-length) 100)
+                                (do
+                                  (unless did-indent
+                                    (indent+)
+                                    (set did-indent true))
+                                  (cprint ",")
+                                  (emit-indent))
+                                (cprin ", "))))
+                          (when did-indent (indent-))
+                          (cprin ")")))
+
+                      # TODO: Validate fn-info
+                      (for i 0 (length fn-info)
+                        # TODO: Emit other types of fn-info
+                        (def info (fn-info i))
+                        (def context (or-syntax info fn-info context))
+                        (cond (and (tuple-p? info) (not (empty? info)) (= (info 0) 'init))
+                              (do
+                                (cprin " : ")
+                                (for j 1 (length info)
+                                  # TODO: Is this the correct way to do initialization lists?
+                                  (emit-expr (info j) context)
+                                  (unless (= (inc j) (length info))
+                                    (cprin ", "))))
+                              (cerr context "Invalid or unimplemented fn info") # TODO
+                              )))
+                (cerr context "Unknown declarator name %p" name))))
+     (cerr
       context
       "Unknown normalized type %p - this is a bug in cppjan" (normalized 0))))
 
@@ -330,54 +462,73 @@
   # TODO: For other numeric values, use something like (num/f 1.1) syntax.
   (cond
     (not= (math/round expr) expr)
-    (cpperror context "Expected an integer (floating points are unimplemented)") # TODO
+    (cerr context "Expected an integer (floating points are unimplemented)") # TODO
     (<= expr math/int-min)
-    (cpperror context "Integer too small (floating points are unimplemented)")
+    (cerr context "Integer too small (floating points are unimplemented)")
     (>= expr math/int-max)
-    (cpperror context "Integer too large (floating points are unimplemented)"))
-  (prin expr))
+    (cerr context "Integer too large (floating points are unimplemented)"))
+  (cprin (string expr)))
 
 (defn- emit-string [expr context]
   # TODO: Escape characters? Multi-strings?
-  (prin `"` expr `"`))
+  (cprin `"` expr `"`))
 
 (defn- emit-uop [expr context &opt with-parens?]
-  (when with-parens? (prin "("))
-  (prin (uops (expr 0)))
+  (when with-parens? (cprin "("))
+  (cprin (uops (expr 0)))
   (emit-expr (expr 1) (or-syntax (expr 1) context) true)
-  (when with-parens? (prin ")")))
+  (when with-parens? (cprin ")")))
 
 (defn- emit-binop [expr context &opt with-parens?]
   (when with-parens?
-    (prin "("))
+    (cprin "("))
   (emit-expr (expr 1) (or-syntax (expr 1) context) true)
-  (prin " " (binops (expr 0)) " ")
+  (cprin " " (binops (expr 0)) " ")
   (emit-expr (expr 2) (or-syntax (expr 2) context) true)
   (when with-parens?
-    (prin ")")))
+    (cprin ")")))
+
+(defn emit-funargs [expr context]
+  (cprin "(")
+  # TODO: Find a way to factor out the did-indent stuff from the many places it appears.
+  (var did-indent false)
+  (for i 1 (length expr)
+    (emit-expr (expr i) (or-syntax (expr i) context))
+    (unless (= (inc i) (length expr))
+      (if (>= (line-length) 100)
+        (do
+          (unless did-indent
+            (indent+)
+            (set did-indent true))
+          (cprint ",")
+          (emit-indent))
+        (cprin ", "))))
+  (when did-indent (indent-))
+  (cprin ")"))
 
 (varfn emit-expr [expr context &opt with-parens?]
   (def normalized (normalize-expr expr context))
   (case (normalized 0)
     :string (emit-string expr context)
     :number (emit-number expr context)
-    :brackets (cpperror context "Bracket expressions are unimplemented") # TODO
-    :symbol (prin expr)
+    :brackets (cerr context "Bracket expressions are unimplemented") # TODO
+    :symbol (emit-ident expr context)
     :call (do
             (def name (expr 0))
             (unless (symbol? name)
-              (cpperror context "Expected symbol as function name"))
+              (cerr context "Expected symbol as function name"))
             # TODO: handle operators, function calls, and so on.
             # TODO: First, check if it is a *& pattern with a single argument.
             (cond
               (and (peg/match pointers-op-grammar name)
                    (implies (= name '*) (= (length expr) 2)))
               (if (not= (length expr) 2)
-                (cpperror context "Expected exactly one argument to %p" name)
+                (cerr context "Expected exactly one argument to %p" name)
                 (do
-                  (prin "(" name)
-                  (emit-expr (expr 1) (or-syntax (expr 1) context))
-                  (prin ")")))
+                  (when with-parens? (cprin "("))
+                  (cprin name)
+                  (emit-expr (expr 1) (or-syntax (expr 1) context) true)
+                  (when with-parens? (cprin ")"))))
               (and (= (length expr) 2)
                    (uops name))
               (emit-uop expr context with-parens?)
@@ -386,98 +537,124 @@
               (case (keyword name)
                 :set (do
                        # TODO: Validation
-                       (emit-expr (expr 1) (or-syntax (expr 1) context))
-                       (prin " = ")
-                       (emit-expr (expr 2) (or-syntax (expr 2) context)))
+                       (emit-expr (expr 1) (or-syntax (expr 1) context) with-parens?)
+                       (cprin " = ")
+                       (emit-expr (expr 2) (or-syntax (expr 2) context)) with-parens?)
                 :cast (do
                         (unless (>= (length expr) 3)
-                          (cpperror context "Expected at least 2 arguments to cast"))
+                          (cerr context "Expected at least 2 arguments to cast"))
                         (when with-parens?
-                          (prin "("))
-                        (prin "(")
+                          (cprin "("))
+                        (cprin "(")
                         (def type-call (if (= (length expr) 3)
                                          ['type (expr 1) '_]
                                          ['type ;(slice expr 1 (- (length expr) 1))]))
                         (emit-def type-call context)
-                        (prin ")")
-                        (emit-expr (last expr) (or-syntax (last expr) context))
+                        (cprin ")")
+                        (emit-expr (last expr) (or-syntax (last expr) context) with-parens?)
                         (when with-parens?
-                          (prin ")")))
+                          (cprin ")")))
+                :new (do
+                       # TODO: Validate
+                       (when with-parens?
+                         (cprin "("))
+                       (cprin "new ")
+                       (emit-expr (tuple/slice expr 1) (or-syntax (expr 1) context))
+                       (when with-parens?
+                         (cprin ")")))
+                :if (do
+                      (when (not= (length expr) 4)
+                        (cerr context "Expected exactly 3 arguments to if expression"))
+                      (emit-expr (expr 1) (or-syntax (expr 1) context) true)
+                      (cprin " ? ")
+                      (emit-expr (expr 2) (or-syntax (expr 2) context) true)
+                      (cprin " : ")
+                      (emit-expr (expr 3) (or-syntax (expr 3) context) true))
                 (do
                   # Regular function call
                   (emit-ident name context)
-                  (prin "(")
-                  (for i 1 (length expr)
-                    (emit-expr (expr i) (or-syntax (expr i) context))
-                    (unless (= (inc i) (length expr))
-                      (prin ", ")))
-                  (prin ")")))))
-    (cpperror
+                  (emit-funargs expr context)))))
+    (cerr
      context
      "Unknown normalized type %p - this is a bug in cppjan" (normalized 0))))
 
 (defn- emit-cond [expr context]
   (when (< (length expr) 2)
-    (cpperror context "Conditional branch requires a condition"))
+    (cerr context "Conditional branch requires a condition"))
   (when (and (> (length expr) 4) (= (expr 0) 'if))
-    (cpperror context "Too many arguments to if"))
+    (cerr context "Too many arguments to if"))
   (forv
    i 1 (length expr)
    (cond
      (= i 1)
      (do
        (emit-indent)
-       (prin "if (")
+       (cprin "if (")
        (emit-expr (expr i) (or-syntax (expr i) context))
-       (prin ") ")
+       (cprin ") ")
        (emit-block-start)
        (++ i)
        (emit-statement-nonest-block (expr i) (or-syntax (expr i) context))
        (emit-block-end))
      (= (inc i) (length expr))
      (do
-       (prin " else ")
+       (cprin " else ")
        (emit-block-start)
        (emit-statement-nonest-block (expr i) (or-syntax (expr i) context))
        (emit-block-end))
      (do
-       (prin " else if (")
+       (cprin " else if (")
        (emit-expr (expr i) (or-syntax (expr i) context))
-       (prin ") ")
+       (cprin ") ")
        (emit-block-start)
        (++ i)
        (emit-statement-nonest-block (expr i) (or-syntax (expr i) context))
        (emit-block-end))))
-  (print))
+  (cprint))
 
-(defn- emit-statement [expr context]
+(varfn emit-statement [expr context]
   (def normalized (normalize-expr expr context))
   (case (normalized 0)
-    :string (cpperror context "Invalid statement %p" expr)
-    :number (cpperror context "Invalid statement %p" expr)
-    :brackets (cpperror context "Invalid statement (tuple with brackets)")
-    :symbol nil # TODO: This is probably a macro.
+    :string (cerr context "Invalid statement %p" expr)
+    :number (cerr context "Invalid statement %p" expr)
+    :brackets (cerr context "Invalid statement (tuple with brackets)")
+    :symbol (cerr context "Constant statements are unimplemented") # TODO: This is probably a macro.
     :call (do
             (def name (expr 0))
-            (unless (symbol? name)
-              (cpperror context "Expected symbol as function name"))
-            (case (keyword name)
-              :if (emit-cond expr (or-syntax expr context))
-              :cond (emit-cond expr (or-syntax expr context))
-              :def (do (emit-def expr context) (print ";"))
-              :do (cpperror context "Unimplemented") # TODO: Emit a block
-              :return (do
-                        (unless (= (length expr) 2)
-                          (cpperror context "Expected one argument to return"))
-                        (emit-indent)
-                        (prin "return" " ")
-                        (emit-expr (expr 1) (or-syntax (expr 1) context))
-                        (print ";"))
-              # TODO: other builtins
+            (if-not (symbol? name)
               (do (emit-indent)
-                  (emit-expr expr context)
-                  (print ";"))))
-    (cpperror
+                  (emit-expr name (or-syntax name context))
+                  (emit-funargs expr context)
+                  (cprint ";"))
+              (case (keyword name)
+                :if (emit-cond expr (or-syntax expr context))
+                :cond (emit-cond expr (or-syntax expr context))
+                :def (do (emit-def expr context true) (cprint ";"))
+                :do (cerr context "Unimplemented") # TODO: Emit a block
+                :return (do
+                          (unless (= (length expr) 2)
+                            (cerr context "Expected one argument to return"))
+                          (emit-indent)
+                          (cprin "return" " ")
+                          (emit-expr (expr 1) (or-syntax (expr 1) context))
+                          (cprint ";"))
+                :label (do
+                         # TODO: validate
+                         (var deindent? false)
+                         (unless (empty? (indent))
+                           (set deindent? true)
+                           (indent-))
+                         (emit-ident (expr 1) context)
+                         (cprint ":")
+                         (when deindent? (indent+)))
+                :c (do
+                     # TODO: validation
+                     (cprin (expr 1)))
+                # TODO: other builtins
+                (do (emit-indent)
+                    (emit-expr expr context)
+                    (cprint ";")))))
+    (cerr
      context
      "Unknown normalized type %p - this is a bug in cppjan" (normalized 0))))
 
@@ -491,19 +668,19 @@
     (emit-statement expr context)))
 
 
-(varfn emit-def [expr context]
+(varfn emit-def [expr context &opt indent?]
   (def kind (keyword (expr 0)))
 
   (unless ({3 true 4 true} (length expr))
-    (cpperror context "Wrong number of arguments to %s" kind))
+    (cerr context "Wrong number of arguments to %s" kind))
 
   (def specifiers (expr 1))
   (def declarator (expr 2))
 
   (unless (tuple-b? specifiers)
-    (cpperror (or-syntax specifiers context) "Expected bracketed tuple for specifiers list"))
+    (cerr (or-syntax specifiers context) "Expected bracketed tuple for specifiers list"))
 
-  (when (= kind :def)
+  (when indent?
     (emit-indent))
 
   (def spec-ctx (or-syntax specifiers context))
@@ -513,7 +690,7 @@
       (emit-attributes specifier (or-syntax specifier spec-ctx))
       (emit-specifier specifier (or-syntax specifier spec-ctx)))
     (unless (= (inc i) (length specifiers))
-      (prin " ")))
+      (cprin " ")))
 
   (needs-space)
   (emit-declarator kind declarator (or-syntax declarator specifiers context))
@@ -521,25 +698,44 @@
 
   (when (= (length expr) 4)
     (when (= kind :type)
-      (cpperror context "Expected 2 arguments to type, got 3"))
+      (cerr context "Expected 2 arguments to type, got 3"))
     (def init (expr 3))
-    (prin " = ")
-    (emit-expr init (or-syntax init declarator specifiers context))))
+    (if (and (tuple-p? init) (not (empty? init)) (= (init 0) 'constructor))
+      # Constructor syntax
+      (do
+        (cprin "(")
+        (var did-indent false)
+        (for i 1 (length init)
+          (emit-expr (init i) (or-syntax (init i) init context))
+          (unless (= (inc i) (length init))
+            (if (>= (line-length) 100)
+              (do
+                (unless did-indent
+                  (indent+)
+                  (set did-indent true))
+                (cprint ",")
+                (emit-indent))
+              (cprin ", "))))
+        (when did-indent (indent-))
+        (cprin ")"))
+      (do
+        (cprin " = ")
+        (emit-expr init (or-syntax init declarator specifiers context))))))
 
-(defn- emit-defn [expr context]
+(varfn emit-defn [expr context]
   (when (< (length expr) 5)
-    (cpperror context "Expected at least 4 arguments to defn"))
+    (cerr context "Expected at least 4 arguments to defn"))
   (var index 0)
   (def specifiers (expr (++ index)))
   (def declarator (expr (++ index)))
   (def doc (if (string? (expr (inc index))) (expr (++ index)) nil))
   (def params 
     (if (< (length expr) (+ index 2))
-      (cpperror context "Params missing for defn")
+      (cerr context "Params missing for defn")
       (expr (++ index))))
   (def fn-info
     (if (< (length expr) (+ index 2))
-      (cpperror context "Function info missing for defn")
+      (cerr context "Function info missing for defn")
       (expr (++ index))))
 
 
@@ -548,51 +744,69 @@
     (def lines (string/split "\n" doc))
     (each line lines
       (if first
-        (do (prin "/**") (set first false))
-        (prin " **"))
+        (do (cprin "/**") (set first false))
+        (cprin " **"))
       (when (not (empty? line))
-        (prin " "))
+        (cprin " "))
       (if (= (length lines) 1)
-        (prin line)
-        (print line)))
+        (cprin line)
+        (cprint line)))
     (unless first
-      (print " **/")))
+      (cprint " **/")))
 
   (emit-def ['def
              specifiers
              ['fn declarator params fn-info]]
-            context)
-  (prin " ")
+            context
+            true)
+  (cprin " ")
   (emit-block-start)
   (for i (inc index) (length expr)
     (def statement (expr i))
     (emit-statement statement (or-syntax statement context)))
   (emit-block-end)
-  (print))
+  (cprint))
 
 (defn- emit-toplevel [expr context]
   (def normalized (normalize-expr expr context))
   (case (normalized 0)
-    :string (cpperror context "Invalid toplevel form %p" expr)
-    :number (cpperror context "Invalid toplevel form %p" expr)
-    :brackets (cpperror context "Invalid toplevel form (tuple with brackets)")
+    :string (cerr context "Invalid toplevel form %p" expr)
+    :number (cerr context "Invalid toplevel form %p" expr)
+    :brackets (cerr context "Invalid toplevel form (tuple with brackets)")
     :symbol nil # TODO: This is probably a macro.
     :call (do
             (def name (expr 0))
             (unless (symbol? name)
-              (cpperror context "Expected symbol as function name %p" name))
+              (cerr context "Expected symbol as function name %p" name))
             (case (keyword name)
               :@include (emit-@include expr (or-syntax expr context))
               :@def (emit-@def expr (or-syntax expr context))
               :@defn (emit-@defn expr (or-syntax expr context))
-              :def (do (emit-def expr (or-syntax expr context))
-                       (print ";"))
+              :def (do (emit-def expr (or-syntax expr context) true)
+                       (cprint ";"))
+              :type (do (emit-def expr (or-syntax expr context) true)
+                        (cprint ";"))
               :defn (emit-defn expr (or-syntax expr context))
               :upscope (for i 1 (length expr)
                          (emit-toplevel (expr i) (or-syntax (expr i) context)))
-              (cpperror context "Unknown toplevel function") # TODO: Unknown toplevel function. Is probably a macro.
+              :ifndef (do
+                        # TODO: validation
+                        (cprin "#ifndef" " ")
+                        (emit-ident (expr 1) context)
+                        (cprint)
+                        (emit-toplevel (expr 2) (or-syntax (expr 2) context))
+                        (when (= (length expr) 4)
+                          (cprint "#else")
+                          (emit-toplevel (expr 3) (or-syntax (expr 3) context)))
+                        (cprin "#endif /* ")
+                        (emit-ident (expr 1) context)
+                        (cprint " */"))
+              :c (do
+                   # TODO: validation
+                   (cprin (expr 1)))
+              (cerr context "Unknown toplevel function") # TODO: Unknown toplevel function. Is probably a macro.
               ))
-    (cpperror
+    (cerr
      context
      "Unknown normalized type %p - this is a bug in cppjan" (normalized 0))))
 
@@ -607,7 +821,7 @@
   [file-data &opt out]
   (with-dyns [*source-name* (file-data :source-name)
               *out* (or out (dyn out))]
-    (print "/* " (dyn *source-name*) " */")
+    (cprint "/* " (dyn *source-name*) " */")
     (emit-code (file-data :code))))
 
 (defn emit-to-string
