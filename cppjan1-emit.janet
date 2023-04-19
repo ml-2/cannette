@@ -68,6 +68,12 @@
                        (* "/" (constant "::"))
                        (if-not "->" (* "-" (constant "_")))))}))
 
+(def method-call-grammar
+  (peg/compile
+   ~{:main (* ':infix-op (% (* (any (* ':symbol ':infix-op)) ':symbol -1)))
+     :infix-op (+ "." "->")
+     :symbol (some (+ (range "az" "AZ" "09") "_" "/" (if-not "->" "-")))}))
+
 (defn symbol-expr
   `Parses an expression with -> and . as infix operators. The rest of the symbol
   must be composed of valid lispified C identifiers. If it fails to parse, the
@@ -574,10 +580,19 @@
                       (cprin " : ")
                       (emit-expr (expr 3) (or-syntax (expr 3) context) true))
                 (do
-                  # TODO: If the name starts with "." or ".->", consider it a method call.
-                  # Regular function call
-                  (emit-ident name context)
-                  (emit-funargs expr context)))))
+                  (def mtch (peg/match method-call-grammar name))
+                  (if mtch
+                    (do
+                      (when (< (length expr) 2)
+                        (cerr context "Expected a receiver for a method call"))
+                      (def name (symbol (mtch 1)))
+                      (def op (if (= (mtch 0) "->") '.-> '.))
+                      (emit-binop [op (expr 1) name] context)
+                      (emit-funargs (tuple/slice expr 1) context))
+                    (do
+                      # Regular function call
+                      (emit-ident name context)
+                      (emit-funargs expr context)))))))
     (cerr
      context
      "Unknown normalized type %p - this is a bug in cppjan" (normalized 0))))
