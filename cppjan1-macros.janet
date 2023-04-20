@@ -43,7 +43,7 @@
     (break exprs))
 
   (when (not (tuple? exprs))
-    (error "Arrays, tables, and structs are not allowed in C code."))
+    (cerr context "Arrays, tables, and structs are not allowed in C code."))
   (when (empty? exprs)
     (break exprs))
   (def name (exprs 0))
@@ -62,7 +62,13 @@
 
   (def macro-form (dyn *macro-form*))
   (setdyn *macro-form* exprs)
-  (var expanded (apply macro-fun (tuple/slice exprs 1)))
+  (var expanded nil)
+  (try
+    (set expanded (apply macro-fun (tuple/slice exprs 1)))
+    ([err]
+     (if (symbol? name)
+       (cerr context `Error in macro "%s": %q` name err)
+       (cerr context `Error in macro: %q` err))))
   (setdyn *macro-form* macro-form)
 
   (when (tuple? expanded)
@@ -74,7 +80,7 @@
       (set expanded expanded+)
       (set newcontext (or-syntax expanded context))
       (when (> (++ counter) max-depth)
-        (error (string "More than " max-depth " recursive macro invocations")))))
+        (cerr context (string "More than " max-depth " recursive macro invocations")))))
   (dosplice (keep-sourcemap exprs expanded) context))
 
 (defmacro def-macros [macro-kw filetype-kw]
@@ -114,9 +120,10 @@
           (set (known-symbols symbol) (or (get-macro symbol) false)))
         (known-symbols symbol))
 
-      {:code (,am-inner cmacro exprs (or-syntax exprs nil))
-       :source-name source-name
-       :filetype ,filetype-kw})
+      (with-dyns [*source-name* source-name]
+        {:code (,am-inner cmacro exprs (or-syntax exprs nil))
+         :source-name source-name
+         :filetype ,filetype-kw}))
 
     (defmacro defile
       `Takes a cppjan project, a symbol or string representing a file name in the
