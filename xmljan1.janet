@@ -1,5 +1,4 @@
-(import ./cppjan1-lib :prefix "")
-(import ./cppjan1-macros :as cm)
+(use ./cppjan1-lib)
 
 # Private dynamics #
 
@@ -107,5 +106,14 @@
 
 (def emit-all emit-all) # Re-export
 
+# Re-exports #
+
+(def *source-name* *source-name*)
+(def *max-depth* *source-name*)
+(def keep-sourcemap keep-sourcemap)
+(def emit-all emit-all)
+
+# Macros #
+
 # Must be at end since it redefines important names like defmacro
-(cm/def-macros :xmljan/macro :xml emit)
+(def-macros :xmljan/macro :xml emit)
