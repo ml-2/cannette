@@ -60,6 +60,16 @@
 (defdyn-local emitlib source-name
   `Name of the source location of the file being generated.`)
 
+# Emit all #
+
+(defn emit-all [project]
+  (each file-name (keys project)
+    (def file-table (project file-name))
+
+    (with
+     [file (file/open file-name :w)]
+     (:emit file-table file))))
+
 # Errors #
 
 (defn- emiterror [context message & params]

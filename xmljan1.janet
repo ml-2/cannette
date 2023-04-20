@@ -105,4 +105,7 @@
   (emit file-data out)
   (string out))
 
-(cm/def-macros :xmljan/macro :xml)
+(def emit-all emit-all) # Re-export
+
+# Must be at end since it redefines important names like defmacro
+(cm/def-macros :xmljan/macro :xml emit)

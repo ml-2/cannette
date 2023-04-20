@@ -83,7 +83,7 @@
         (cerr context (string "More than " max-depth " recursive macro invocations")))))
   (dosplice (keep-sourcemap exprs expanded) context))
 
-(defmacro def-macros [macro-kw filetype-kw]
+(defmacro def-macros [macro-kw filetype-kw emitter]
   ~(upscope
 
     (defn add-to-project
@@ -101,6 +101,8 @@
                                           (array/slice parts 0 (dec (length parts)))
                                           @[,macro-kw (last parts)]) "/"))))
       (if val (val :value) nil))
+
+    (def- emitter {:emit ,emitter})
 
     (defn apply-macros
       `Applies cppjan/xmljan macros to the given code and returns the result.
@@ -121,9 +123,11 @@
         (known-symbols symbol))
 
       (with-dyns [*source-name* source-name]
-        {:code (,am-inner cmacro exprs (or-syntax exprs nil))
+        (struct/with-proto
+         emitter
+         :code (,am-inner cmacro exprs (or-syntax exprs nil))
          :source-name source-name
-         :filetype ,filetype-kw}))
+         :filetype ,filetype-kw)))
 
     (defmacro defile
       `Takes a cppjan project, a symbol or string representing a file name in the
@@ -161,5 +165,4 @@
   metadata is also set to true. This enables this macro to be used in
   cppjan/xmljan code.`
       [name & more]
-      (apply defn (symbol (string ,macro-kw "/" name)) :macro more))
-))
+      (apply defn (symbol (string ,macro-kw "/" name)) :macro more))))
