@@ -33,7 +33,7 @@
 
 (defn- fn? [f] (or (function? f) (cfunction? f)))
 
-(defn- am-inner [cmacro? exprs]
+(defn- am-inner [cmacro exprs]
   (when (or (idempotent? exprs) (symbol? exprs) (buffer? exprs))
     (break exprs))
 
@@ -47,20 +47,19 @@
   (unless (and (= (tuple/type exprs) :parens)
                (or (fn? name)
                    (and (symbol? name)
-                        (or (special-names name) (cmacro? name)))))
-    (break (dosplice (keep-syntax! exprs (map |(am-inner cmacro? $) exprs)))))
+                        (or (special-names name) (cmacro name)))))
+    (break (dosplice (keep-syntax! exprs (map |(am-inner cmacro $) exprs)))))
 
   (def macro-fun (if (fn? name)
                    name
                    (or (special-names name)
-                       ((dyn name) :value)
-                       (((dyn name) :ref) 0))))
+                       (cmacro name))))
   (var expanded (apply macro-fun (tuple/slice exprs 1)))
   (when (tuple? expanded)
     (var expanded+ nil)
     (def max-depth (or (dyn *max-depth*) 500))
     (var counter 0)
-    (while (not= expanded (set expanded+ (am-inner cmacro? expanded)))
+    (while (not= expanded (set expanded+ (am-inner cmacro expanded)))
       (set expanded expanded+)
       (when (> (++ counter) max-depth)
         (error (string "More than " max-depth " recursive macro invocations")))))
@@ -76,11 +75,11 @@
       [project name expanded-code]
       (set (project name) expanded-code))
 
-    (defn is-macro?
-      `Returns true if the symbol is bound to a cppjan macro at the toplevel.`
-      [symbol]
-      (def sym (dyn symbol))
-      (truthy? (and (table? sym) (sym ,macro-kw))))
+    (defn get-macro
+      `Returns the cppjan macro value if it exists, nil otherwise.`
+      [sym]
+      (def val (dyn (symbol (string ,macro-kw "/" sym))))
+      (if val (val :value) nil))
 
     (defn apply-macros
       `Applies cppjan/xmljan macros to the given code and returns the result.
@@ -95,13 +94,13 @@
       [source-name exprs]
 
       (def known-symbols @{})
-      (defn cmacro? [symbol]
+      (defn cmacro [symbol]
         (when (nil? (known-symbols symbol))
-          (set (known-symbols symbol) (is-macro? symbol)))
+          (set (known-symbols symbol) (or (get-macro symbol) false)))
         (known-symbols symbol))
 
       (with-dyns []
-        {:code (,am-inner cmacro? exprs)
+        {:code (,am-inner cmacro exprs)
          :source-name source-name
          :filetype ,filetype-kw}))
 
@@ -129,11 +128,11 @@
       `Sym must be a symbol which is defined as a function or macro in the
   environment. Enables this macro to be used inside C code.`
       [sym]
-      (set ((dyn sym) ,macro-kw) true))
+      (put (curenv) (symbol (string ,macro-kw "/" sym)) @{:value ((dyn sym) :value)}))
 
     (defmacro defmacro
       `Same as the core defmacro, except that the :cppjan/macro or :xmljan/macro
   metadata is also set to true. This enables this macro to be used in
   cppjan/xmljan code.`
       [name & more]
-      (apply defn name ,macro-kw :macro more))))
+      (apply defn (symbol (string ,macro-kw "/" name)) :macro more))))

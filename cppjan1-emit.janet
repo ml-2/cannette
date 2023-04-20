@@ -2,9 +2,6 @@
 
 # Lib #
 
-(def- ?dbqt (`"` 0))
-(def- ?< (`<` 0))
-
 # Private dynamics #
 
 (defdyn-local cppjan indent `Current indent level for cppjan output.`)
@@ -152,7 +149,7 @@
   (when (or (not include) (empty? include))
     (cerr context "Expected symbol or string as argument to @include"))
   (cprin "#include ")
-  (if ({?dbqt true ?< true} (first include))
+  (if ({(chr `"`) true (chr `<`) true} (first include))
     (cprint include)
     (cprint `"` include `"`)))
 
