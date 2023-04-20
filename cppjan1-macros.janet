@@ -78,7 +78,10 @@
     (defn get-macro
       `Returns the cppjan macro value if it exists, nil otherwise.`
       [sym]
-      (def val (dyn (symbol (string ,macro-kw "/" sym))))
+      (def parts (string/split "/" sym))
+      (def val (dyn (symbol (string/join (array/concat
+                                          (array/slice parts 0 (dec (length parts)))
+                                          @[,macro-kw (last parts)]) "/"))))
       (if val (val :value) nil))
 
     (defn apply-macros
@@ -130,9 +133,15 @@
       [sym]
       (put (curenv) (symbol (string ,macro-kw "/" sym)) @{:value ((dyn sym) :value)}))
 
+    (defmacro defmacro-
+      `Private version of cppjan's defmacro.`
+      [name & more]
+      (apply defn (symbol (string ,macro-kw "/" name)) :macro :private more))
+
     (defmacro defmacro
       `Same as the core defmacro, except that the :cppjan/macro or :xmljan/macro
   metadata is also set to true. This enables this macro to be used in
   cppjan/xmljan code.`
       [name & more]
-      (apply defn (symbol (string ,macro-kw "/" name)) :macro more))))
+      (apply defn (symbol (string ,macro-kw "/" name)) :macro more))
+))

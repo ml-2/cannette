@@ -849,3 +849,21 @@
   (def out @"")
   (emit file-data out)
   (string out))
+
+# Utilities #
+
+(defn- decl-name-inner [decl context]
+  (cond
+    (symbol? decl)
+    decl
+    (and (tuple-p? decl) (not (empty? decl)))
+    (case (decl 0)
+      (keyword "operator") (cerr context "Operator declarators are unimplemented!") # TODO
+      (do
+        (when (< (length decl) 2)
+          (cerr context "Expected arguments to %v" (decl 0)))
+        (decl-name-inner (decl 1))))))
+
+(defn declarator-name [decl]
+  (def context (or-syntax decl nil))
+  (decl-name-inner decl (or-syntax decl nil)))
