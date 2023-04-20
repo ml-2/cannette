@@ -838,11 +838,20 @@
     (unless first
       (cprint " **/")))
 
-  (emit-def ['def
-             specifiers
-             ['fn declarator params]]
-            context
-            true)
+  # Move the pointers outside the fn declarator (otherwise this would be a function pointer)
+  (var decl declarator)
+  (def stack @[])
+  (while (and (tuple-p? decl) (not (empty? decl)) (= (decl 0) '*))
+    (when (< (length decl) 2)
+      (cerr (or-syntax decl context) "Too few arguments to * declarator"))
+    (array/push stack decl)
+    (set decl (decl 1)))
+  (set decl ['fn decl params])
+  (while (not (empty? stack))
+    (def lst (array/pop stack))
+    (set decl (keep-syntax lst [(lst 0) decl ;(slice lst 2)])))
+
+  (emit-def ['def specifiers decl] context true)
   (cprin " ")
   (emit-block-start)
   (for i (inc index) (length expr)

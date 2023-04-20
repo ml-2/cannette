@@ -82,23 +82,49 @@
     ['def specs-val ['&& name]]
     ['def specs-val ['&& name] value]))
 
-(defmacro -fn
-  `Shorthand to declare a function.`
-  [name params specs]
+(defn- fn-inner [name rest &opt pointers]
+  (when (< (length rest) 2)
+    (error "Too few arguments"))
+  (var index 0)
+  (def doc (if (string? (rest 0))
+             (do (++ index) (rest 0))
+             nil))
+  (def params (rest index))
+  (++ index)
+  (when (<= (length rest) index)
+    (error "Too few arguments"))
+  (def specs (rest index))
+  (++ index)
+  (def body (slice rest index))
   (def specs-val (if (tuple-b? specs) specs (tuple/brackets specs)))
-  ['def specs-val [:fn name params]])
+  (def name (if pointers [pointers name] name))
+  (if (empty? body)
+    ['def specs-val [:fn name params]] # TODO: Documentation for defs
+    (do
+      (def value (if doc
+                   ['defn specs-val name doc params ;body]
+                   ['defn specs-val name params ;body]))
+      (keep-syntax (dyn *macro-form*) value))))
+
+(defmacro -fn
+  `Shorthand to define a function. If no forms are given, it will be a
+  declaration. Cannot be used for functions with empty bodies.`
+  [name & rest]
+  (fn-inner name rest))
 
 (defmacro *fn
-  `Shorthand to declare a function which returns a pointer.`
-  [name params specs]
-  (def specs-val (if (tuple-b? specs) specs (tuple/brackets specs)))
-  ['def specs-val ['* [:fn name params]]])
+  `Shorthand to define a function which returns a pointer. If no forms are
+  given, it will be a declaration. Cannot be used for functions with empty
+  bodies.`
+  [name & rest]
+  (fn-inner name rest '*))
 
 (defmacro **fn
-  `Shorthand to declare a function which returns a pointer to a pointer.`
-  [name params specs]
-  (def specs-val (if (tuple-b? specs) specs (tuple/brackets specs)))
-  ['def specs-val ['** [:fn name params]]])
+  `Shorthand to define a function which returns a pointer to a pointer. If no
+  forms are given, it will be a declaration. Cannot be used for functions with
+  empty bodies.`
+  [name & rest]
+  (fn-inner name rest '**))
 
 (defmacro -f
   `Shorthand to declare a function pointer variable.`
