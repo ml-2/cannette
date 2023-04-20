@@ -506,6 +506,16 @@
   (unless first
     (cprint " " doc-star "*/")))
 
+(defn emit-comment-statement [expr context]
+  (emit-indent)
+  (cond (= (length expr) 1)
+        (emit-comment "" context)
+        (= (length expr) 2)
+        (do
+          (unless (string? (expr 1))
+            (cerr (or-syntax (expr 1) context) "Expected a string argument for comment"))
+          (emit-comment (expr 1) context))))
+
 (defn- emit-uop [expr context &opt with-parens?]
   (when with-parens? (cprin "("))
   (cprin (uops (expr 0)))
@@ -741,6 +751,7 @@
                             (cprin " ")
                             (emit-expr (expr 1) (or-syntax (expr 1) context)))
                           (cprint ";"))
+                :comment (emit-comment-statement expr context)
                 :label (do
                          # TODO: validate
                          (var deindent? false)
@@ -903,6 +914,7 @@
                         (cprin "#endif /* ")
                         (emit-ident (expr 1) context)
                         (cprint " */"))
+              :comment (emit-comment-statement expr context)
               :n! (cprint)
               :c (do
                    # TODO: validation
