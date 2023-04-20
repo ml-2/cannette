@@ -57,5 +57,5 @@ static void throw_error(int error) {
      (if (= e NULL)
        (janet-panicf `Git error with code %d` (janet-wrap-integer error))
        (janet-panicf `Git error with code %d class %d: %s`
-                     (cast [long] error) (cast [long] e->klass) e->message)))))
+                     (cast (type [long]) error) (cast (type [long]) e->klass) e->message)))))
  "Relatively simple function.")

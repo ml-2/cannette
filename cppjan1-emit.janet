@@ -291,7 +291,7 @@
   (cond
     (symbol? spec)
     (emit-ident spec context)
-    (and (tuple-p? spec) (not (empty? spec)) (symbol? (spec 0)))
+    (and (tuple-p? spec) (not (empty? spec)) (or (symbol? (spec 0)) (keyword? (spec 0))))
     (case (keyword (spec 0))
       :<> (emit-template-type spec context)
       :class (emit-class spec context)
@@ -576,17 +576,17 @@
                        (cprin " = ")
                        (emit-expr (expr 2) (or-syntax (expr 2) context)) with-parens?)
                 :cast (do
-                        (unless (>= (length expr) 3)
-                          (cerr context "Expected at least 2 arguments to cast"))
+                        (unless (= (length expr) 3)
+                          (cerr context "Expected 2 arguments to cast"))
+                        (unless (and (tuple-p? (expr 1)) (not (empty? (expr 1)))
+                                     (= ((expr 1) 0) 'type))
+                          (cerr context "Expected a type as the first argument to cast"))
                         (when with-parens?
                           (cprin "("))
                         (cprin "(")
-                        (def type-call (if (= (length expr) 3)
-                                         ['type (expr 1) '_]
-                                         ['type ;(slice expr 1 (- (length expr) 1))]))
-                        (emit-def type-call context)
+                        (emit-def (expr 1) context)
                         (cprin ")")
-                        (emit-expr (last expr) (or-syntax (last expr) context) with-parens?)
+                        (emit-expr (expr 2) (or-syntax (expr 2) context) with-parens?)
                         (when with-parens?
                           (cprin ")")))
                 :new (do
@@ -866,8 +866,6 @@
                        (cprint ";"))
               :type (do (emit-def expr (or-syntax expr context) true)
                         (cprint ";"))
-              :class (do (emit-def ['type (tuple/brackets expr)] context)
-                         (cprint ";"))
               :defn (emit-defn expr (or-syntax expr context))
               :upscope (for i 1 (length expr)
                          (emit-toplevel (expr i) (or-syntax (expr i) context)))
