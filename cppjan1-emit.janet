@@ -105,7 +105,9 @@
              (if (tuple-p? expr)
                (cerr context "Empty call is not allowed")
                [:brackets expr])
-             [:call expr])
+             (if (tuple-p? expr)
+               [:call expr]
+               [:brackets expr]))
     :string [:string expr]
     :symbol [:symbol expr]
     (cerr context (fmt "Invalid expression %p" expr))))
@@ -137,6 +139,7 @@
 (var- emit-expr nil)
 
 (defn- emit-ident [ident context]
+  (def ident (as-symbol ident))
   (def converted (peg/match ident-conversion-grammar ident))
   (if converted
     (cprin (converted 0))
@@ -470,8 +473,14 @@
   (cprin (string expr)))
 
 (defn- emit-string [expr context]
-  # TODO: Escape characters? Multi-strings?
-  (cprin `"` expr `"`))
+  # TODO: Escape characters?
+  (if-not (contains? expr (chr "\n"))
+    (cprin `"` expr `"`)
+    (do
+      (each line (string/split "\n" expr)
+        (cprint)
+        (emit-indent)
+        (cprin `"` line `\n"`)))))
 
 (defn- emit-uop [expr context &opt with-parens?]
   (when with-parens? (cprin "("))
@@ -511,12 +520,31 @@
   (when did-indent (indent-))
   (cprin ")"))
 
+(defn- emit-array [expr context]
+  (if (and (< (length expr) 4)
+           (all |(not (tuple? $)) expr))
+    (do
+      (cprin "{ ")
+      (for i 0 (length expr)
+        (emit-expr (expr i) (or-syntax (expr i) context))
+        (if (= (inc i) (length expr))
+          (cprin " ")
+          (cprin ", ")))
+      (cprin "}"))
+    (do
+      (emit-block-start)
+      (for i 0 (length expr)
+        (emit-indent)
+        (emit-expr (expr i) (or-syntax (expr i) context))
+        (cprint ","))
+      (emit-block-end))))
+
 (varfn emit-expr [expr context &opt with-parens?]
   (def normalized (normalize-expr expr context))
   (case (normalized 0)
     :string (emit-string expr context)
     :number (emit-number expr context)
-    :brackets (cerr context "Bracket expressions are unimplemented") # TODO
+    :brackets (emit-array expr context)
     :symbol (emit-ident expr context)
     :call (do
             (def name (expr 0))
@@ -713,9 +741,11 @@
 
   (def declarator (if (> (length expr) 2) (expr 2) nil))
   (when (> (length expr) 2)
-    (needs-space)
+    (unless (empty? specifiers)
+      (needs-space))
     (emit-declarator kind declarator (or-syntax declarator specifiers context))
-    (no-needs-space))
+    (unless (empty? specifiers)
+      (no-needs-space)))
 
   (when (= (length expr) 4)
     (when (= kind :type)
@@ -789,7 +819,7 @@
     :string (cerr context "Invalid toplevel form %p" expr)
     :number (cerr context "Invalid toplevel form %p" expr)
     :brackets (cerr context "Invalid toplevel form (tuple with brackets)")
-    :symbol nil # TODO: This is probably a macro.
+    :symbol (do (emit-indent) (emit-ident expr context) (cprint))
     :call (do
             (def name (expr 0))
             (unless (symbol? name)

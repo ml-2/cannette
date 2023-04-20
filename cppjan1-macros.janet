@@ -18,7 +18,7 @@
   `If the argument is not a tuple, returns it. Otherwise applies splice
   operators in the given tuple and returns the result, preserving the tuple type
   and the sourcemap.`
-  [exprs]
+  [exprs context]
   (when (not (tuple? exprs))
     (break exprs))
   (if-not (some splice? exprs)
@@ -26,14 +26,19 @@
     (do (def result @[])
         (each exp exprs
           (if (splice? exp)
-            (for i 0 (length (exp 1))
-              (array/push result ((exp 1) i)))
+            (do
+              (def to-splice (exp 1))
+              (unless (or (tuple? to-splice) (array? to-splice))
+                (cerr context "Cannot splice type %v" (type to-splice)))
+              (for i 0 (length to-splice)
+                (array/push result (to-splice i)))
+              )
             (array/push result exp)))
         (keep-syntax! exprs result))))
 
 (defn- fn? [f] (or (function? f) (cfunction? f)))
 
-(defn- am-inner [cmacro exprs]
+(defn- am-inner [cmacro exprs context]
   (when (or (idempotent? exprs) (symbol? exprs) (buffer? exprs))
     (break exprs))
 
@@ -48,22 +53,29 @@
                (or (fn? name)
                    (and (symbol? name)
                         (or (special-names name) (cmacro name)))))
-    (break (dosplice (keep-syntax! exprs (map |(am-inner cmacro $) exprs)))))
+    (break (dosplice (keep-syntax! exprs (map |(am-inner cmacro $ (or-syntax $ context)) exprs)) context)))
 
   (def macro-fun (if (fn? name)
                    name
                    (or (special-names name)
                        (cmacro name))))
+
+  (def macro-form (dyn *macro-form*))
+  (setdyn *macro-form* exprs)
   (var expanded (apply macro-fun (tuple/slice exprs 1)))
+  (setdyn *macro-form* macro-form)
+
   (when (tuple? expanded)
     (var expanded+ nil)
     (def max-depth (or (dyn *max-depth*) 500))
     (var counter 0)
-    (while (not= expanded (set expanded+ (am-inner cmacro expanded)))
+    (var newcontext (or-syntax expanded context))
+    (while (not= expanded (set expanded+ (am-inner cmacro expanded context)))
       (set expanded expanded+)
+      (set newcontext (or-syntax expanded context))
       (when (> (++ counter) max-depth)
         (error (string "More than " max-depth " recursive macro invocations")))))
-  (dosplice (keep-syntax exprs expanded)))
+  (dosplice (keep-syntax exprs expanded) context))
 
 (defmacro def-macros [macro-kw filetype-kw]
   ~(upscope
@@ -102,10 +114,9 @@
           (set (known-symbols symbol) (or (get-macro symbol) false)))
         (known-symbols symbol))
 
-      (with-dyns []
-        {:code (,am-inner cmacro exprs)
-         :source-name source-name
-         :filetype ,filetype-kw}))
+      {:code (,am-inner cmacro exprs (or-syntax exprs nil))
+       :source-name source-name
+       :filetype ,filetype-kw})
 
     (defmacro defile
       `Takes a cppjan project, a symbol or string representing a file name in the
