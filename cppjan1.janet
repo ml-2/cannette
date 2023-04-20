@@ -487,6 +487,24 @@
         (emit-indent)
         (cprin `"` line `\n"`)))))
 
+(defn emit-comment [text context &opt doc?]
+  (var first true)
+  (def lines (string/split "\n" text))
+  (def doc-star (if doc? "*" ""))
+  (each line lines
+    (if first
+      (do
+        (cprin "/*" doc-star)
+        (set first false))
+      (cprin " *" doc-star))
+    (when (not (empty? line))
+      (cprin " "))
+    (if (= (length lines) 1)
+      (cprin line)
+      (cprint line)))
+  (unless first
+    (cprint " " doc-star "*/")))
+
 (defn- emit-uop [expr context &opt with-parens?]
   (when with-parens? (cprin "("))
   (cprin (uops (expr 0)))
@@ -825,19 +843,7 @@
       (expr (++ index))))
 
   (when doc
-    (var first true)
-    (def lines (string/split "\n" doc))
-    (each line lines
-      (if first
-        (do (cprin "/**") (set first false))
-        (cprin " **"))
-      (when (not (empty? line))
-        (cprin " "))
-      (if (= (length lines) 1)
-        (cprin line)
-        (cprint line)))
-    (unless first
-      (cprint " **/")))
+    (emit-comment doc context :doc))
 
   # Move the pointers outside the fn declarator (otherwise this would be a function pointer)
   (var decl declarator)
