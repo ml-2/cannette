@@ -260,7 +260,7 @@
     (cerr context "Expected at least 2 arguments to class"))
   (def name (spec 1))
   (def info (spec 2))
-  (cprin "class ")
+  (cprin (spec 0) " ")
   # TODO: Validate the name
   (emit-ident name context)
 
@@ -295,7 +295,7 @@
     (case (keyword (spec 0))
       :<> (emit-template-type spec context)
       :class (emit-class spec context)
-      :struct nil # TODO
+      :struct (emit-class spec context)
       :enum nil # TODO
       :union nil # TODO
       :decltype nil # TODO
@@ -490,15 +490,18 @@
 
 (defn- emit-binop [expr context &opt with-parens?]
   (def sym (expr 0))
+  (when (< (length expr) 3)
+    (cerr context "Too few arguments to binary operator %v" sym))
   (when with-parens?
     (cprin "("))
   (emit-expr (expr 1) (or-syntax (expr 1) context) true)
-  (unless (binops-nospace sym)
-    (cprin " "))
-  (cprin (binops sym))
-  (unless (binops-nospace sym)
-    (cprin " "))
-  (emit-expr (expr 2) (or-syntax (expr 2) context) true)
+  (for i 2 (length expr)
+    (unless (binops-nospace sym)
+      (cprin " "))
+    (cprin (binops sym))
+    (unless (binops-nospace sym)
+      (cprin " "))
+    (emit-expr (expr i) (or-syntax (expr i) context) true))
   (when with-parens?
     (cprin ")")))
 
@@ -594,16 +597,29 @@
                        (emit-expr (tuple/slice expr 1) (or-syntax (expr 1) context))
                        (when with-parens?
                          (cprin ")")))
+                :sizeof (do
+                          (when (not= (length expr) 2)
+                            (cerr context "Expected 1 argument to sizeof"))
+                          (def arg (expr 1))
+                          (cprin "sizeof(")
+                          (if (and (tuple-p? arg) (not (empty? arg)) (= (arg 0) 'type))
+                            (emit-def arg (or-syntax arg context))
+                            (emit-expr arg (or-syntax arg context)))
+                          (cprin ")"))
                 :<> (do
                       (emit-template-type expr context))
                 :if (do
                       (when (not= (length expr) 4)
                         (cerr context "Expected exactly 3 arguments to if expression"))
+                      (when with-parens?
+                        (cprin "("))
                       (emit-expr (expr 1) (or-syntax (expr 1) context) true)
                       (cprin " ? ")
                       (emit-expr (expr 2) (or-syntax (expr 2) context) true)
                       (cprin " : ")
-                      (emit-expr (expr 3) (or-syntax (expr 3) context) true))
+                      (emit-expr (expr 3) (or-syntax (expr 3) context) true)
+                      (when with-parens?
+                        (cprin ")")))
                 (do
                   (def mtch (peg/match method-call-grammar name))
                   (if mtch
@@ -656,6 +672,22 @@
        (emit-block-end))))
   (cprint))
 
+(defn- emit-while [expr context]
+  (when (< (length expr) 2)
+    (cerr context "While loop requires a condition"))
+
+  (var context (or-syntax (expr 1) context))
+  (emit-indent)
+  (cprin "while (")
+  (emit-expr (expr 1) context)
+  (cprin ") ")
+  (emit-block-start)
+  (for i 2 (length expr)
+    (set context (or-syntax (expr i) context))
+    (emit-statement (expr i) context))
+  (emit-block-end)
+  (cprint))
+
 (varfn emit-statement [expr context]
   (def normalized (normalize-expr expr context))
   (case (normalized 0)
@@ -673,6 +705,7 @@
               (case (keyword name)
                 :if (emit-cond expr (or-syntax expr context))
                 :cond (emit-cond expr (or-syntax expr context))
+                :while (emit-while expr (or-syntax expr context))
                 :def (do (emit-def expr context true) (cprint ";"))
                 :do (cerr context "Unimplemented") # TODO: Emit a block
                 :return (do

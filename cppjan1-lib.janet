@@ -14,6 +14,13 @@
       (break)))
   result)
 
+(defn keep-sourcemap [original result]
+  (when (and (tuple? original)
+             (not= (tuple/sourcemap original) [-1 -1])
+             (tuple? result))
+    (tuple/setmap result ;(tuple/sourcemap original)))
+  result)
+
 # Logic #
 
 (defn implies [b0 b1]

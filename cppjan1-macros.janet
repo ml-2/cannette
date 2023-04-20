@@ -75,7 +75,7 @@
       (set newcontext (or-syntax expanded context))
       (when (> (++ counter) max-depth)
         (error (string "More than " max-depth " recursive macro invocations")))))
-  (dosplice (keep-syntax exprs expanded) context))
+  (dosplice (keep-sourcemap exprs expanded) context))
 
 (defmacro def-macros [macro-kw filetype-kw]
   ~(upscope
