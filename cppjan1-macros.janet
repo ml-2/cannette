@@ -27,30 +27,102 @@
   (def struct-def (keep-syntax (dyn *macro-form*) ~(:struct ,name ,;args)))
   ~(def [typedef ,struct-def] ,name))
 
-(defmacro -t [specs]
+(defmacro -t
+  `Shorthand for a type.`
+  [specs]
   ['type (if (tuple-b? specs) specs (tuple/brackets specs))])
 
-(defmacro -t* [specs]
+(defmacro *t
+  `Shorthand for a pointer type.`
+  [specs]
   ['type (if (tuple-b? specs) specs (tuple/brackets specs)) '(* _)])
 
-(defmacro -d [name specs &opt value]
+(defmacro **t
+  `Shorthand for a pointer to a pointer type.`
+  [specs]
+  ['type (if (tuple-b? specs) specs (tuple/brackets specs)) '(** _)])
+
+(defmacro -d
+  `Shorthand to define a variable.`
+  [name specs &opt value]
   (def specs-val (if (tuple-b? specs) specs (tuple/brackets specs)))
   (if (nil? value)
     ['def specs-val name]
     ['def specs-val name value]))
 
-(defmacro -d* [name specs &opt value]
+(defmacro *d
+  `Shorthand to define a pointer variable.`
+  [name specs &opt value]
   (def specs-val (if (tuple-b? specs) specs (tuple/brackets specs)))
   (if (nil? value)
     ['def specs-val ['* name]]
     ['def specs-val ['* name] value]))
 
-(defmacro -d& [name specs &opt value]
+(defmacro **d
+  `Shorthand to define a pointer to a pointer variable.`
+  [name specs &opt value]
+  (def specs-val (if (tuple-b? specs) specs (tuple/brackets specs)))
+  (if (nil? value)
+    ['def specs-val ['** name]]
+    ['def specs-val ['** name] value]))
+
+(defmacro &d
+  `Shorthand to define a reference variable.`
+  [name specs &opt value]
   (def specs-val (if (tuple-b? specs) specs (tuple/brackets specs)))
   (if (nil? value)
     ['def specs-val ['& name]]
     ['def specs-val ['& name] value]))
 
-(defmacro -f [name params specs]
+(defmacro &&d
+  `Shorthand to define a double reference variable.`
+  [name specs &opt value]
   (def specs-val (if (tuple-b? specs) specs (tuple/brackets specs)))
-  ['def specs-val ['fn name params]])
+  (if (nil? value)
+    ['def specs-val ['&& name]]
+    ['def specs-val ['&& name] value]))
+
+(defmacro -fn
+  `Shorthand to declare a function.`
+  [name params specs]
+  (def specs-val (if (tuple-b? specs) specs (tuple/brackets specs)))
+  ['def specs-val [:fn name params]])
+
+(defmacro *fn
+  `Shorthand to declare a function which returns a pointer.`
+  [name params specs]
+  (def specs-val (if (tuple-b? specs) specs (tuple/brackets specs)))
+  ['def specs-val ['* [:fn name params]]])
+
+(defmacro **fn
+  `Shorthand to declare a function which returns a pointer to a pointer.`
+  [name params specs]
+  (def specs-val (if (tuple-b? specs) specs (tuple/brackets specs)))
+  ['def specs-val ['** [:fn name params]]])
+
+(defmacro -f
+  `Shorthand to declare a function pointer variable.`
+  [name params specs &opt value]
+  (def specs-val (if (tuple-b? specs) specs (tuple/brackets specs)))
+  (def f-val [:fn ['* name] params])
+  (if (nil? value)
+    ['def specs-val f-val]
+    ['def specs-val f-val value]))
+
+(defmacro *f
+  `Define a function pointer variable to a function which returns a pointer.`
+  [name params specs &opt value]
+  (def specs-val (if (tuple-b? specs) specs (tuple/brackets specs)))
+  (def f-val ['* [:fn ['* name] params]])
+  (if (nil? value)
+    ['def specs-val f-val]
+    ['def specs-val f-val value]))
+
+(defmacro **f
+  `Define a function pointer variable to a function which returns a pointer to a pointer.`
+  [name params specs &opt value]
+  (def specs-val (if (tuple-b? specs) specs (tuple/brackets specs)))
+  (def f-val ['** [:fn ['* name] params]])
+  (if (nil? value)
+    ['def specs-val f-val]
+    ['def specs-val f-val value]))

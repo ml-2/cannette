@@ -316,7 +316,7 @@
                 (emit-ident decl context)))
     :call (do
             (def name (decl 0))
-            (unless (or (symbol? name) (tuple-b? name))
+            (unless (or (symbol? name) (keyword? name) (tuple-b? name))
               (cerr context "Invalid function name"))
             (cond
               (tuple-b? name)
@@ -404,7 +404,14 @@
                            (last params)]
                           [params (keep-syntax params '[])]))
 
+                      (def is-function-pointer?
+                        (and (tuple-p? fn-decl) (not (empty? fn-decl)) (= (fn-decl 0) '*)))
+                      (when is-function-pointer?
+                        (emit-space?)
+                        (cprin "("))
                       (emit-declarator kind fn-decl (or-syntax fn-decl context))
+                      (when is-function-pointer?
+                        (cprin ")"))
                       (if (= params '[void])
                         (cprin "(void)")
                         (do
