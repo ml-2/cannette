@@ -53,7 +53,7 @@
   [ns name doc]
   ~(upscope
     (defdyn ,(symbol (string "*" ns "/" name "*")) ,doc)
-    (def ,(symbol (string "*" name "*")) ,(symbol (string "*" ns "/" name "*")))))
+    (def ,(symbol (string "*" name "*")) ,doc ,(symbol (string "*" ns "/" name "*")))))
 
 # Public dynamics #
 
@@ -70,6 +70,16 @@
 (defn- depth [] (or (dyn *current-depth*) 0))
 (defn- inc-depth [] (setdyn *current-depth* (inc (depth))))
 (defn- set-depth [val] (setdyn *current-depth* val))
+
+# Modules #
+
+(defmacro re-export [name]
+  (unless (symbol? name)
+    (errorf "Expected a symbol, got %v" (type name)))
+  (def doc (get (dyn name) :doc))
+  (if doc
+    ['def name doc name]
+    ['def name name]))
 
 # Emit all #
 

@@ -108,10 +108,10 @@
 
 # Re-exports #
 
-(def *source-name* *source-name*)
-(def *max-depth* *max-depth*)
-(def keep-sourcemap keep-sourcemap)
-(def emit-all emit-all)
+(re-export *source-name*)
+(re-export *max-depth*)
+(re-export keep-sourcemap)
+(re-export emit-all)
 
 # Macros #
 
