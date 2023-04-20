@@ -940,14 +940,17 @@
           (cerr context "Expected arguments to %v" (decl 0)))
         (decl-name-inner (decl 1))))))
 
-(defn declarator-name [decl]
+(defn declarator-name
+  `Extracts the name of the declarator (a symbol). For example, given the
+  declarator (* (:fn fun-name [])), returns 'fun-name .`
+  [decl]
   (def context (or-syntax decl nil))
   (decl-name-inner decl (or-syntax decl nil)))
 
 # Re-exports #
 
 (def *source-name* *source-name*)
-(def *max-depth* *source-name*)
+(def *max-depth* *max-depth*)
 (def keep-sourcemap keep-sourcemap)
 (def emit-all emit-all)
 

@@ -63,6 +63,14 @@
 (defdyn-local cppjan max-depth
   `How many recursive macro expansions to apply before giving up.`)
 
+# Private dynamics #
+
+(defdyn-local cppjan current-depth
+  `How many recursive macro expansions to apply before giving up.`)
+(defn- depth [] (or (dyn *current-depth*) 0))
+(defn- inc-depth [] (setdyn *current-depth* (inc (depth))))
+(defn- set-depth [val] (setdyn *current-depth* val))
+
 # Emit all #
 
 (defn emit-all [project]
@@ -162,13 +170,18 @@
   (when (tuple? expanded)
     (var expanded+ nil)
     (def max-depth (or (dyn *max-depth*) 500))
-    (var counter 0)
+    (def current-depth (depth))
     (var newcontext (or-syntax expanded context))
+
+    (when (> (inc-depth) max-depth)
+      (cerr context (string "More than " max-depth " recursive macro invocations")))
+
     (while (not= expanded (set expanded+ (am-inner cmacro expanded context)))
       (set expanded expanded+)
       (set newcontext (or-syntax expanded context))
-      (when (> (++ counter) max-depth)
-        (cerr context (string "More than " max-depth " recursive macro invocations")))))
+      (when (> (inc-depth) max-depth)
+        (cerr context (string "More than " max-depth " recursive macro invocations"))))
+    (set-depth current-depth))
   (dosplice (keep-sourcemap exprs expanded) context))
 
 (defmacro def-macros
@@ -212,8 +225,8 @@
   location.
 
   By default macros will be recursively expanded up to 500 times before giving
-  an error. To change this limit, set the dynamic binding :cppjan/max-depth to
-  a higher value.`
+  an error. To change this limit, set the dynamic binding *max-depth* to a
+  higher value.`
       [source-name exprs]
 
       (def known-symbols @{})
@@ -251,7 +264,7 @@
 
     (defn enable-macro
       `Sym must be a symbol which is defined as a function or macro in the
-  environment. Enables this macro to be used inside C code.`
+  environment. Enables this macro to be used as a cppjan macro.`
       [sym]
       (put (curenv) (symbol (string ,macro-kw "/" sym)) @{:value ((dyn sym) :value)}))
 

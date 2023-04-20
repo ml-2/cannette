@@ -109,7 +109,7 @@
 # Re-exports #
 
 (def *source-name* *source-name*)
-(def *max-depth* *source-name*)
+(def *max-depth* *max-depth*)
 (def keep-sourcemap keep-sourcemap)
 (def emit-all emit-all)
 
