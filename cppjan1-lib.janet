@@ -171,7 +171,12 @@
         (cerr context (string "More than " max-depth " recursive macro invocations")))))
   (dosplice (keep-sourcemap exprs expanded) context))
 
-(defmacro def-macros [macro-kw filetype-kw emitter]
+(defmacro def-macros
+  `Defines functions and macros for managing the macros of a given filetype (for
+  example, :cpp or :xml). macro-kw is a keyword representing a prefix to use for
+  the macros, filetype-kw is the filetype, and emitter is a function that takes
+  a code struct and an optional value for *out* and outputs the generated code.`
+  [macro-kw filetype-kw emitter]
   ~(upscope
 
     (defn add-to-project
@@ -181,16 +186,23 @@
       [project name expanded-code]
       (set (project name) expanded-code))
 
+    (defn get-macro-name
+      `Resolves the cppjan macro name.`
+      [sym]
+      (def parts (string/split "/" sym))
+      (symbol (string/join (array/concat
+                            (array/slice parts 0 (dec (length parts)))
+                            @[,macro-kw (last parts)]) "/")))
+
     (defn get-macro
       `Returns the cppjan macro value if it exists, nil otherwise.`
       [sym]
-      (def parts (string/split "/" sym))
-      (def val (dyn (symbol (string/join (array/concat
-                                          (array/slice parts 0 (dec (length parts)))
-                                          @[,macro-kw (last parts)]) "/"))))
+      (def val (dyn (get-macro-name sym)))
       (if val (val :value) nil))
 
-    (def- emitter {:emit ,emitter})
+    (def- emitter
+      `A prototype for code structs. It contains the :emit method.`
+      {:emit ,emitter})
 
     (defn apply-macros
       `Applies cppjan/xmljan macros to the given code and returns the result.
@@ -218,9 +230,9 @@
          :filetype ,filetype-kw)))
 
     (defmacro defile
-      `Takes a cppjan project, a symbol or string representing a file name in the
-  project, optional definition metadata like in def, and finally code. The
-  metadata is the same as what is allowed inside def statements.
+      `Takes a cppjan project symbol, a symbol or string representing a file
+  name in the project, optional definition metadata like in def, and finally
+  code. The metadata is the same as what is allowed inside def statements.
 
   Runs cppjan macros on the code and sets the result into the project for the
   given name (as a string). If the name was a symbol, also defines that symbol
@@ -242,6 +254,11 @@
   environment. Enables this macro to be used inside C code.`
       [sym]
       (put (curenv) (symbol (string ,macro-kw "/" sym)) @{:value ((dyn sym) :value)}))
+
+    (defmacro doc
+      `Shows documentation for the given cppjan macro name.`
+      [symbol]
+      ['doc (get-macro-name symbol)])
 
     (defmacro defmacro-
       `Private version of cppjan's defmacro.`
