@@ -159,7 +159,8 @@
     (= (length expr) 2)
     (do
       (cprin "#define ")
-      # TODO: validate
+      (unless (symbol? (expr 1))
+        (cerr context "Expected a symbol argument to @def"))
       (emit-ident (expr 1) (or-syntax (expr 1) context))
       (cprint))
     (= (length expr) 3)
