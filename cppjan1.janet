@@ -334,10 +334,12 @@
                       (cerr context "Arrays of non-fixed length are not implemented") # TODO
                       ))
 
-              (peg/match pointers-grammar name)
+              (or (peg/match pointers-grammar name) (= name 'quote))
               (do
                 (emit-space?)
-                (cprin name)
+                (if (= name 'quote)
+                  (cprin "*")
+                  (cprin name))
                 (when (< (length decl) 2)
                   (cerr context "Wrong number of arguments to %p" name))
                 (def inner-decl (decl 1))
@@ -457,7 +459,7 @@
       "Unknown normalized type %p - this is a bug in cppjan" (normalized 0))))
 
 (def- uops
-  '{+ "+" - "-" * "*" & "&" not "!" bnot "~" ++ "++" -- "--"})
+  '{+ "+" - "-" * "*" & "&" not "!" bnot "~" ++ "++" -- "--" quote "*" quasiquote "&"})
 
 (def- binops
   '{+ "+" - "-" * "*" / "/" % "%"
