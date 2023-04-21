@@ -139,6 +139,7 @@
 (defn- emit-ident [ident context]
   (def ident (as-symbol ident))
   (def converted (peg/match ident-conversion-grammar ident))
+  (emit-space?)
   (if converted
     (cprin (converted 0))
     (cprin ident)))
@@ -186,6 +187,7 @@
 (defn- emit-template-type [expr context]
   (when (< (length expr) 2)
     (cerr context "Expected at least one argument to <>"))
+  (emit-space?)
   (def name (expr 1))
   # TODO: Use normalize
   (unless (symbol? name)
@@ -408,7 +410,8 @@
                           [params (keep-syntax params '[])]))
 
                       (def is-function-pointer?
-                        (and (tuple-p? fn-decl) (not (empty? fn-decl)) (= (fn-decl 0) '*)))
+                        (and (tuple-p? fn-decl) (not (empty? fn-decl))
+                             (or (= (fn-decl 0) '*) (= (fn-decl 0) 'quote))))
                       (when is-function-pointer?
                         (emit-space?)
                         (cprin "("))
@@ -478,12 +481,14 @@
     (cerr context "Integer too small (floating points are unimplemented)")
     (>= expr math/int-max)
     (cerr context "Integer too large (floating points are unimplemented)"))
+  (emit-space?)
   (cprin (string expr)))
 
 (defn- emit-string [expr context]
   # TODO: Escape characters?
   (if-not (contains? expr (chr "\n"))
-    (cprin `"` expr `"`)
+    (do (emit-space?)
+        (cprin `"` expr `"`))
     (do
       (each line (string/split "\n" expr)
         (cprint)
@@ -519,12 +524,14 @@
           (emit-comment (expr 1) context))))
 
 (defn- emit-uop [expr context &opt with-parens?]
+  (emit-space?)
   (when with-parens? (cprin "("))
   (cprin (uops (expr 0)))
   (emit-expr (expr 1) (or-syntax (expr 1) context) true)
   (when with-parens? (cprin ")")))
 
 (defn- emit-binop [expr context &opt with-parens?]
+  (emit-space?)
   (def sym (expr 0))
   (when (< (length expr) 3)
     (cerr context "Too few arguments to binary operator %v" sym))
@@ -563,12 +570,15 @@
   (if (and (< (length expr) 4)
            (all |(not (tuple? $)) expr))
     (do
+      (emit-space?)
       (cprin "{ ")
       (for i 0 (length expr)
         (emit-expr (expr i) (or-syntax (expr i) context))
         (if (= (inc i) (length expr))
-          (cprin " ")
-          (cprin ", ")))
+          (needs-space)
+          (do (cprin ",")
+              (needs-space))))
+      (emit-space?)
       (cprin "}"))
     (do
       (emit-block-start)
@@ -596,6 +606,7 @@
               (if (not= (length expr) 2)
                 (cerr context "Expected exactly one argument to %p" name)
                 (do
+                  (emit-space?)
                   (when with-parens? (cprin "("))
                   (cprin name)
                   (emit-expr (expr 1) (or-syntax (expr 1) context) true)
@@ -617,6 +628,7 @@
                         (unless (and (tuple-p? (expr 1)) (not (empty? (expr 1)))
                                      (= ((expr 1) 0) 'type))
                           (cerr context "Expected a type as the first argument to cast"))
+                        (emit-space?)
                         (when with-parens?
                           (cprin "("))
                         (cprin "(")
@@ -627,6 +639,7 @@
                           (cprin ")")))
                 :new (do
                        # TODO: Validate
+                       (emit-space?)
                        (when with-parens?
                          (cprin "("))
                        (cprin "new ")
@@ -636,6 +649,7 @@
                 :sizeof (do
                           (when (not= (length expr) 2)
                             (cerr context "Expected 1 argument to sizeof"))
+                          (emit-space?)
                           (def arg (expr 1))
                           (cprin "sizeof(")
                           (if (and (tuple-p? arg) (not (empty? arg)) (= (arg 0) 'type))
@@ -647,6 +661,7 @@
                 :if (do
                       (when (not= (length expr) 4)
                         (cerr context "Expected exactly 3 arguments to if expression"))
+                      (emit-space?)
                       (when with-parens?
                         (cprin "("))
                       (emit-expr (expr 1) (or-syntax (expr 1) context) true)
@@ -841,7 +856,8 @@
         (cprin ")"))
       (do
         (cprin " = ")
-        (emit-expr init (or-syntax init declarator specifiers context))))))
+        (emit-expr init (or-syntax init declarator specifiers context)))))
+  (no-needs-space))
 
 (varfn emit-defn [expr context]
   # TODO: This should be a macro.
@@ -862,7 +878,8 @@
   # Move the pointers outside the fn declarator (otherwise this would be a function pointer)
   (var decl declarator)
   (def stack @[])
-  (while (and (tuple-p? decl) (not (empty? decl)) (= (decl 0) '*))
+  (while (and (tuple-p? decl) (not (empty? decl))
+              (or (= (decl 0) '*) (= (decl 0) 'quote)))
     (when (< (length decl) 2)
       (cerr (or-syntax decl context) "Too few arguments to * declarator"))
     (array/push stack decl)
@@ -967,6 +984,36 @@
   [decl]
   (def context (or-syntax decl nil))
   (decl-name-inner decl (or-syntax decl nil)))
+
+(defn apply-type
+  `Given a name, a type, and an optional initializer, creates a declaration with
+  that type set to the initial value.`
+  [name tp &opt init]
+
+  (def context (or-syntax tp name init nil))
+  (when (not (tuple-p? tp))
+    (cerr context "Expected a parenthesized tuple, got %v" (type tp)))
+  (when (or (< (length tp) 2) (> (length tp) 3))
+    (cerr context "Expected 2 or 3 values in type declaration, got %v" (length tp)))
+  (when (not= (tp 0) 'type)
+    (cerr context "Expected the keyword 'type for the type declaration, got %v" (tp 0)))
+  (when (not= (tp 0) 'type)
+    (cerr context "Expected a bracketed tuple of specifiers, got %v" (type (tp 1))))
+
+  (def specs (tp 1))
+
+  (var decl (or (get tp 2) '_))
+  (def stack @[])
+  (while (and (tuple-p? decl) (not (empty? decl)))
+    (when (< (length decl) 2)
+      (cerr (or-syntax decl context) "Too few arguments to declarator"))
+    (array/push stack decl)
+    (set decl (decl 1)))
+  (set decl name)
+  (while (not (empty? stack))
+    (def lst (array/pop stack))
+    (set decl (keep-syntax lst [(lst 0) decl ;(slice lst 2)])))
+  ~(def ,specs ,decl ,;(if init [init] [])))
 
 # Re-exports #
 

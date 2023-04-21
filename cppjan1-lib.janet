@@ -23,8 +23,8 @@
 
 # Logic #
 
-(defn implies [b0 b1]
-  (or (not b0) b1))
+(defmacro implies [b0 b1]
+  ~(or (not ,b0) ,b1))
 
 (defn iff [b0 b1]
   (and (implies b0 b1)
@@ -33,7 +33,7 @@
 (defn xor [b0 b1]
   (not (iff b0 b1)))
 
-# Strings #
+# Strings and collections #
 
 (def rep string/replace-all)
 (def fmt string/format)
@@ -44,6 +44,14 @@
     (when (= elem value)
       (set result true)
       (break)))
+  result)
+
+(defn to-set
+  `Converts an array or tuple into a set (a table mapping keys to true).`
+  [ary]
+  (def result (table/new (length ary)))
+  (each val ary
+    (set (result val) true))
   result)
 
 # Dynamics #
@@ -171,10 +179,14 @@
   (var expanded nil)
   (try
     (set expanded (apply macro-fun (tuple/slice exprs 1)))
-    ([err]
+    ([err throwing-fiber]
+     (def stack-trace @"")
+     (with-dyns [*err* stack-trace]
+       (debug/stacktrace throwing-fiber))
+
      (if (symbol? name)
-       (cerr context `Error in macro "%s": %q` name err)
-       (cerr context `Error in macro: %q` err))))
+       (cerr context "Error in macro \"%s\": %q\nStack trace:\n%s" name err stack-trace)
+       (cerr context "Error in macro: %q\nStack trace:\n%s" err stack-trace))))
   (setdyn *macro-form* macro-form)
 
   (when (tuple? expanded)

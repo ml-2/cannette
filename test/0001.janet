@@ -59,3 +59,12 @@ static void throw_error(int error) {
        (janet-panicf `Git error with code %d class %d: %s`
                      (cast (type [long]) error) (cast (type [long]) e->klass) e->message)))))
  "Relatively simple function.")
+
+(assert (= (c/apply-type 'name '(type [uint8_t] (* _)))
+           '(def [uint8_t] (* name))))
+
+(assert (= (c/apply-type 'name '(type [uint8_t] (* (* _))))
+           '(def [uint8_t] (* (* name)))))
+
+(assert (= (c/apply-type 'name '(type [const char] (* (* _) const)))
+           '(def [const char] (* (* name) const))))
