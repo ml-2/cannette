@@ -3,9 +3,10 @@
 # Private dynamics #
 
 (defdyn-local cppjan indent :private `Current indent level for cppjan output.`)
+(def- indent-spaces "  ")
 (defn- indent [] (or (dyn *indent*) (setdyn *indent* @"")))
-(defn- indent+ [] (buffer/push-string (indent) "  "))
-(defn- indent- [] (buffer/popn (indent) 2))
+(defn- indent+ [] (buffer/push-string (indent) indent-spaces))
+(defn- indent- [] (buffer/popn (indent) (length indent-spaces)))
 
 (defdyn-local cppjan needs-backslash :private
   `Indicate that newlines must be backslashed.`)
@@ -738,6 +739,47 @@
        (emit-block-end))))
   (cprint))
 
+(defn emit-switch [expr context]
+  (when (< (length expr) 2)
+    (cerr context "Expected at least one argument to switch"))
+  (emit-indent)
+  (cprin "switch (")
+  (emit-expr (expr 1) (or-syntax (expr 1) context))
+  (cprin ") ")
+  (emit-block-start)
+  (var disallow-fallthrough false)
+  (for i 2 (length expr)
+    (def elem (expr i))
+    (def context (or-syntax elem context))
+    (cond
+      (and (tuple-p? elem) (= (get elem 0) 'case))
+      (if disallow-fallthrough
+        (cerr context "Undeclared fallthrough")
+        (do (for j 1 (length elem)
+              (emit-indent)
+              (cprin "case ")
+              (emit-expr (elem j) context)
+              (cprint ":"))
+            (set disallow-fallthrough false)))
+      (= elem '(fallthrough))
+      (do (indent+)
+          (emit-indent)
+          (cprint "/* fallthrough */")
+          (indent-)
+          (set disallow-fallthrough false))
+      (= elem '(break))
+      (do (indent+)
+          (emit-statement elem context)
+          (indent-)
+          (set disallow-fallthrough false))
+      # else
+      (do (indent+)
+          (emit-statement elem context)
+          (indent-)
+          (set disallow-fallthrough true))))
+  (emit-block-end)
+  (cprint))
+
 (defn- emit-while [expr context]
   (when (< (length expr) 2)
     (cerr context "While loop requires a condition"))
@@ -772,8 +814,12 @@
                 :if (emit-cond expr (or-syntax expr context))
                 :cond (emit-cond expr (or-syntax expr context))
                 :while (emit-while expr (or-syntax expr context))
+                :switch (emit-switch expr (or-syntax expr context))
                 :def (do (emit-def expr context true) (cprint ";"))
                 :do (cerr context "Unimplemented") # TODO: Emit a block
+                :break (do # TODO: Validation and argument (label)
+                         (emit-indent)
+                         (cprint "break;"))
                 :return (do
                           (when (> (length expr) 2)
                             (cerr context "Expected zero or one argument to return"))

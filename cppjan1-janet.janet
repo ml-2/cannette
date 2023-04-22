@@ -3,7 +3,12 @@
 
 (defdyn-local cppjan1 defjan-meta :private `Janet metadata array`)
 (defn- defjan-meta []
-  (or (dyn *defjan-meta*) (setdyn *defjan-meta* @[])))
+  (when (not (c/get *defjan-meta*))
+    (c/put *defjan-meta* @[]))
+  (c/get *defjan-meta*))
+
+(defdyn-local cppjan1 abstract-types :private `Abstract types`)
+
 
 (defdyn-local cppjan1 defjan-hooks :private `Hooks to call on each metadata array`)
 (defn- -defjan-hooks [] (or (dyn *defjan-hooks*) (setdyn *defjan-hooks* @[])))
@@ -126,14 +131,27 @@
                                      ~(,(symbol (string "janet_opt" (type 0))) argv argc ,index ,(type 1)))))
                     (= (type 0) :abstract)
                     (do
-                      (unless (and (implies optional? (= (length type) 4))
-                                   (implies (not optional?) (= (length type) 3)))
-                        (cerr context "Wrong number of arguments to :abstract %v" i))
-                      (def type-call (type 1))
-                      (def type-call (if (symbol? type-call)
-                                       ~(type ,[type-call])
-                                         type-call))
-                      (def abstract-type (type 2))
+                      (var type-call nil)
+                      (var abstract-type nil)
+                      (if (= (length type) 2)
+                        (do
+                          (def type-data (c/getn *abstract-types* (type 1)))
+                          (unless type-data
+                            (cerr context "Wrong number of arguments to :abstract %v" i))
+                          (def c-type (type-data :c-type))
+                          (if (symbol? c-type)
+                            (set type-call ['type ~[,(type-data :c-type)] '(* _)])
+                            (set type-call c-type))
+                          (set abstract-type (type-data :var-name)))
+                        (do
+                          (unless (and (implies optional? (= (length type) 4))
+                                       (implies (not optional?) (= (length type) 3)))
+                            (cerr context "Wrong number of arguments to :abstract %v" i))
+                          (set type-call (type 1))
+                          (set type-call (if (symbol? type-call)
+                                           ~(type ,[type-call])
+                                             type-call))
+                          (set abstract-type (type 2))))
                       (if optional?
                         (do
                           (def dflt (type 3))
@@ -204,13 +222,15 @@
 
   (def [names arity-call extractor-calls] (parse-janet-types args context))
 
-  (set doc (string/format "%q\n\n%s" [janet-name ;names] (or doc "")))
-  (put metadata :doc doc)
+  (put metadata :doc (string/format "%q\n\n%s" [janet-name ;names] (or doc "")))
 
   (def body (slice rest body-start))
 
   (each hook (-defjan-hooks)
     (hook metadata context))
+
+  # Update the doc with the changes from the hooks (if any)
+  (set doc (if (string? (metadata :doc)) (metadata :doc) nil))
 
   (array/push (defjan-meta) metadata)
 
@@ -230,6 +250,22 @@
   (array/clear (defjan-meta))
   ~(def [static const JanetReg] ([] cfuns) ,(tuple/brackets ;ary)))
 
+(c/defmacro module-entry [&opt module-name]
+  (def module-name (or module-name (c/get :project-name)))
+  (when (not module-name)
+    (c/cerr (dyn *macro-form*) "Expected a name for module-name or for the project-name to be set."))
+  ~(defn [] JANET_MODULE_ENTRY [(def [JanetTable] (* env))]
+    (janet_cfuns env ,module-name cfuns)))
+
+
+(defn- typed-name [type auto-name given-name]
+  (when (and (not given-name) (not (c/get :project-name)))
+    (c/cerr (dyn *macro-form*)
+            `Required either a variable name as argument or for project-name to be set`))
+  (if (or (not given-name) (= given-name '_))
+    (symbol (string (c/get :project-name) "_" type "_" auto-name))
+    given-name))
+
 (def abstract-type-keys
   '(.name .gc .gcmark .get
     .put .marshal .unmarshal
@@ -248,12 +284,12 @@
       (errorf "Unknown abstract type key %v" key)))
   (c/keep-sourcemap (dyn *macro-form*) ~(dict ,;result)))
 
-(c/defmacro module-entry [&opt module-name]
-  (def module-name (or module-name (c/get :project-name)))
-  (when (not module-name)
-    (c/cerr (dyn *macro-form*) "Expected a name for module-name or for the project-name to be set."))
-  ~(defn [] JANET_MODULE_ENTRY [(def [JanetTable] (* env))]
-    (janet_cfuns env ,module-name cfuns)))
+(c/defmacro defabstract [type-name c-type struct &opt var-name]
+  (def name (typed-name type-name 'type var-name))
+  (c/putn *abstract-types*
+     type-name @{:type-name type-name :c-type c-type :var-name name})
+  ~(def [static const JanetAbstractType] ,name
+     (,cppjan/macro/abstract-type ,struct)))
 
 (defn type-methods-hook
   `Keep track of all the methods on each abstract type.`
@@ -263,17 +299,14 @@
     (when (or (not (tuple? data)) (not= (length data) 2))
       (c/cerr context "Expected a tuple of length 2 for :method metadata"))
     (def type (data 0))
-    (when (c/getn :methods-map type :defined?)
+    (when (c/getn *abstract-types* type :defined?)
       (c/cerr context "Cannot define method after method array is already created"))
-    (c/putn :methods-map type (method-data :janet-name) method-data)))
 
-(defn- typed-name [type auto-name given-name]
-  (when (and (not given-name) (not (c/get :project-name)))
-    (c/cerr (dyn *macro-form*)
-            `Required either a variable name as argument or for project-name to be set`))
-  (if (or (not given-name) (= given-name '_))
-    (symbol (string (c/get :project-name) "_" type "_" auto-name))
-    given-name))
+    (var ary (c/getn *abstract-types* type :methods))
+    (when (not ary)
+      (set ary @[])
+      (c/putn *abstract-types* type :methods ary))
+    (array/push ary method-data)))
 
 (c/defmacro methods-array
   `Output a JanetMethod method array with all the methods for the given type.
@@ -284,7 +317,7 @@
   (when (and (not name) (not (c/get :project-name)))
     (c/cerr (dyn *macro-form*)
             `Required either a variable name as argument or for project-name to be set`))
-  (when (c/getn :methods-map type :defined?)
+  (when (c/getn *abstract-types* type :defined?)
     (c/cerr (dyn *macro-form*) "Cannot output same methods array twice"))
 
   (def result
@@ -292,12 +325,12 @@
        ([] ,(typed-name type 'methods name))
        ,(do
           (def arys @[])
-          (eachp [_ data] (c/getn :methods-map type)
+          (each data (or (c/getn *abstract-types* type :methods) [])
             (def [_ name] (data :method))
             (array/push arys (tuple/brackets (string name) (data :c-name))))
           (array/push arys '[NULL NULL])
           (tuple/brackets ;arys))))
-  (c/putn :methods-map type :defined? true)
+  (c/putn *abstract-types* type :defined? true)
   result)
 
 (c/defmacro declget
@@ -309,13 +342,10 @@
 
 (c/defmacro defget
   `Define a getter function for the given abstract type. Set the name to _ or nil
-  to automatically use the name [project-name]_[type]_get. args must be set
-  specifically to the tuple [data key out] and cannot be any other value.
-  If the tuple is empty, automatically generates a body which searches the
+  to automatically use the name [project-name]_[type]_get. If the tuple is
+  empty, automatically generates a body which searches the
   [project-name]_[type]_methods variable to find the appropriate method.`
-  [name type args & body]
-  (when (not= args '[data key out])
-    (c/cerr (dyn *macro-form*) "Expected arguments list of [data key out]."))
+  [name type & body]
   (def name (typed-name type 'get name))
   (def body
     (if (not (empty? body))
