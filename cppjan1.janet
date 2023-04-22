@@ -875,7 +875,6 @@
   (no-needs-space))
 
 (varfn emit-defn [expr context]
-  # TODO: This should be a macro.
   (when (< (length expr) 4)
     (cerr context "Expected at least 3 arguments to defn"))
   (var index 0)

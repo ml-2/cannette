@@ -267,6 +267,14 @@
       (c/cerr context "Cannot define method after method array is already created"))
     (c/putn :methods-map type (method-data :janet-name) method-data)))
 
+(defn- typed-name [type auto-name given-name]
+  (when (and (not given-name) (not (c/get :project-name)))
+    (c/cerr (dyn *macro-form*)
+            `Required either a variable name as argument or for project-name to be set`))
+  (if (or (not given-name) (= given-name '_))
+    (symbol (string (c/get :project-name) "_" type "_" auto-name))
+    given-name))
+
 (c/defmacro methods-array
   `Output a JanetMethod method array with all the methods for the given type.
   The type-methods-hook must be enabled for this function to work (otherwise it
@@ -275,16 +283,13 @@
   [type &opt name]
   (when (and (not name) (not (c/get :project-name)))
     (c/cerr (dyn *macro-form*)
-            (string
-             `methods-array either requires a variable name to be passed as the second `
-             `argument or a project-name to be set, in which case the name will be `
-             `[project-name]_[type]_methods`)))
+            `Required either a variable name as argument or for project-name to be set`))
   (when (c/getn :methods-map type :defined?)
     (c/cerr (dyn *macro-form*) "Cannot output same methods array twice"))
 
   (def result
     ~(def [static const JanetMethod]
-       ([] ,(or name (symbol (string (c/get :project-name) "_" type "_methods"))))
+       ([] ,(typed-name type 'methods name))
        ,(do
           (def arys @[])
           (eachp [_ data] (c/getn :methods-map type)
@@ -294,3 +299,28 @@
           (tuple/brackets ;arys))))
   (c/putn :methods-map type :defined? true)
   result)
+
+(c/defmacro declget
+  `Declare a getter function for the given abstract type. Set the name to _ or nil
+  to automatically use the name [project-name]_[type]_get`
+  [name type]
+  (def name (typed-name type 'get name))
+  ~(def [static int] (fn ,name [(*d data void) (-d key Janet) (*d out Janet)])))
+
+(c/defmacro defget
+  `Define a getter function for the given abstract type. Set the name to _ or nil
+  to automatically use the name [project-name]_[type]_get. args must be set
+  specifically to the tuple [data key out] and cannot be any other value.
+  If the tuple is empty, automatically generates a body which searches the
+  [project-name]_[type]_methods variable to find the appropriate method.`
+  [name type args & body]
+  (when (not= args '[data key out])
+    (c/cerr (dyn *macro-form*) "Expected arguments list of [data key out]."))
+  (def name (typed-name type 'get name))
+  (def body
+    (if (not (empty? body))
+      body
+      ~((if (not (janet-checktype key JANET-KEYWORD))
+          (return 0))
+        (return (janet-getmethod (janet-unwrap-keyword key) ,(typed-name type 'methods nil) out)))))
+  ~(defn [static int] ,name [(*d data void) (-d key Janet) (*d out Janet)] ,;body))
