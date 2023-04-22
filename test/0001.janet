@@ -21,7 +21,7 @@
 
 (defmacro gencode [source-name & code]
   ~(c/emit-to-string
-    (c/apply-macros ,source-name ',code)))
+    (c/apply-macros-to-file ,source-name ',code)))
 
 (assert
  (= basic-generate-include

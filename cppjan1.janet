@@ -811,6 +811,8 @@
                   (emit-funargs expr context)
                   (cprint ";"))
               (case (keyword name)
+                :upscope (for i 1 (length expr)
+                           (emit-statement (expr i) (or-syntax (expr i) context)))
                 :if (emit-cond expr (or-syntax expr context))
                 :cond (emit-cond expr (or-syntax expr context))
                 :while (emit-while expr (or-syntax expr context))

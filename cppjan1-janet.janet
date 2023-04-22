@@ -91,6 +91,11 @@
     (cond
       (= elem '&)
       (do (set max -1)
+          (++ i)
+          (when (< (inc i) (length args))
+            (cerr context "Too many arguments after &"))
+          (when (< i (length args))
+            (array/push names (args i)))
           (break))
       (= elem '&opt)
       (set optional? true)
@@ -161,7 +166,7 @@
                             elem type-call
                             ~(cast
                               ,type-call
-                              (janet_optabstract argv argc ,index ,abstract-type ,dflt)))))
+                              (janet_optabstract argv argc ,index (& ,abstract-type) ,dflt)))))
                         (do
                           (array/push
                            extractor-calls
@@ -169,7 +174,7 @@
                             elem type-call
                             ~(cast
                               ,type-call
-                              (janet_getabstract argv ,index ,abstract-type)))))))
+                              (janet_getabstract argv ,index (& ,abstract-type))))))))
                     (and optional? (basic-type? (type 0)))
                     (cerr context "Type %v cannot have a default value at index %v" (type 0) i)
                     # else
@@ -182,11 +187,15 @@
           (++ max))
         (++ index))))
 
-  (def arity-call (if (= min max)
-                    ['janet-fixarity 'argc min]
-                    ['janet-arity 'argc min max]))
+  (def arity-calls (cond
+                    (= min max)
+                    [['janet-fixarity 'argc min]]
+                    (and (= min 0) (= max -1))
+                    []
+                    # else
+                    [['janet-arity 'argc min max]]))
 
-  [names arity-call extractor-calls])
+  [names arity-calls extractor-calls])
 
 (c/defmacro defjan
   `Generate a Janet function. All Janet bindings in a file are tracked and are
@@ -218,16 +227,28 @@
       # else
       (cerr context "Invalid metadata type %v in janet definition" (type elem))))
 
-  (def args ((c/apply-macros (or (dyn c/*source-name*) ":unknown") args) :code))
+  (def args (c/apply-macros args))
 
-  (def [names arity-call extractor-calls] (parse-janet-types args context))
+  (def [names arity-calls extractor-calls] (parse-janet-types args context))
 
   (put metadata :doc (string/format "%q\n\n%s" [janet-name ;names] (or doc "")))
 
   (def body (slice rest body-start))
 
   (each hook (-defjan-hooks)
-    (hook metadata context))
+    (try
+      (hook metadata)
+      ([err throwing-fiber]
+       (def stack-trace @"")
+       (with-dyns [*err* stack-trace]
+         (debug/stacktrace throwing-fiber))
+       (c/cerr context "Error in defjan hook: %q\nStack trace:\n%s" err stack-trace))))
+
+  # When this metadata is set, don't generate arity checks nor extract the values.
+  (def [arity-calls extractor-calls]
+    (if (get metadata :skip-c-args-check)
+      [[] []]
+      [arity-calls extractor-calls]))
 
   # Update the doc with the changes from the hooks (if any)
   (set doc (if (string? (metadata :doc)) (metadata :doc) nil))
@@ -235,7 +256,7 @@
   (array/push (defjan-meta) metadata)
 
   ~(defn [static Janet] ,c-name ;,(if doc [doc] []) [(def [int32-t] argc) (def [Janet] (* argv))]
-     ,arity-call
+     ,;arity-calls
      ,;extractor-calls
      ,;body))
 
@@ -255,7 +276,7 @@
   (when (not module-name)
     (c/cerr (dyn *macro-form*) "Expected a name for module-name or for the project-name to be set."))
   ~(defn [] JANET_MODULE_ENTRY [(def [JanetTable] (* env))]
-    (janet_cfuns env ,module-name cfuns)))
+    (janet_cfuns env ,(string module-name) cfuns)))
 
 
 (defn- typed-name [type auto-name given-name]
@@ -286,6 +307,7 @@
 
 (c/defmacro defabstract [type-name c-type struct &opt var-name]
   (def name (typed-name type-name 'type var-name))
+  (def c-type (c/apply-macros c-type))
   (c/putn *abstract-types*
      type-name @{:type-name type-name :c-type c-type :var-name name})
   ~(def [static const JanetAbstractType] ,name
@@ -293,14 +315,14 @@
 
 (defn type-methods-hook
   `Keep track of all the methods on each abstract type.`
-  [method-data context]
+  [method-data]
   (def data (method-data :method))
   (when data
     (when (or (not (tuple? data)) (not= (length data) 2))
-      (c/cerr context "Expected a tuple of length 2 for :method metadata"))
+      (error "Expected a tuple of length 2 for :method metadata"))
     (def type (data 0))
     (when (c/getn *abstract-types* type :defined?)
-      (c/cerr context "Cannot define method after method array is already created"))
+      (error "Cannot define method after method array is already created"))
 
     (var ary (c/getn *abstract-types* type :methods))
     (when (not ary)

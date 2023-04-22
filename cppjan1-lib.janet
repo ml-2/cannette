@@ -244,7 +244,19 @@
        `Metadata associated with the file for use with macros.`)
     (defn file-data [] (or (dyn *file-data*) (setdyn *file-data* @{})))
 
-    (defn apply-macros
+    (defn apply-macros [exprs]
+      (def context (or-syntax exprs nil))
+      (unless (dyn *source-name*)
+        (cerr context "Apply-macros must only be called within a macro evaluation context"))
+      (def known-symbols @{})
+      (defn cmacro [symbol]
+        (when (nil? (known-symbols symbol))
+          (set (known-symbols symbol) (or (get-macro symbol) false)))
+        (known-symbols symbol))
+
+      (,am-inner cmacro exprs context))
+
+    (defn apply-macros-to-file
       `Applies cppjan/xmljan macros to the given code and returns the result.
   Macro names are determined based on which bindings in the environment have the
   :cppjan/macro or :xmljan metadata set to true. A source-name string must be
@@ -255,17 +267,10 @@
   an error. To change this limit, set the dynamic binding *max-depth* to a
   higher value.`
       [source-name exprs]
-
-      (def known-symbols @{})
-      (defn cmacro [symbol]
-        (when (nil? (known-symbols symbol))
-          (set (known-symbols symbol) (or (get-macro symbol) false)))
-        (known-symbols symbol))
-
       (with-dyns [*source-name* source-name]
         (struct/with-proto
          emitter
-         :code (,am-inner cmacro exprs (or-syntax exprs nil))
+         :code (apply-macros exprs)
          :source-name source-name
          :filetype ,filetype-kw
          :data (file-data))))
@@ -281,7 +286,7 @@
       [project name & more]
       (assert (or (symbol? name) (string? name)))
       (def meta (take-while |(not (tuple? $)) more))
-      (def result (apply-macros
+      (def result (apply-macros-to-file
                    (or (dyn *current-file*) "unknown source")
                    (keep-syntax! more (tuple/slice more (length meta)))))
       (if (symbol? name)

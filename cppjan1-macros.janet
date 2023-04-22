@@ -15,10 +15,9 @@
   (unless (even? (length args))
     (cerr context "Expected an even number of arguments to dict"))
   (def result @[])
-  (forv
-   i 0 (length args)
-   (array/push result (keep-syntax context ['set (args i) (args (inc i))]))
-   (++ i))
+  (forv i 0 (length args)
+    (array/push result (keep-syntax context ['set (args i) (args (inc i))]))
+    (++ i))
   (tuple/brackets ;result))
 
 (c/defmacro class [& args]
