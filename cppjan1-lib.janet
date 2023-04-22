@@ -85,9 +85,10 @@
   (unless (symbol? name)
     (errorf "Expected a symbol, got %v" (type name)))
   (def doc (get (dyn name) :doc))
+  (def macro (get (dyn name) :macro))
   (if doc
-    ['def name doc name]
-    ['def name name]))
+    ['def name {:macro macro} doc name]
+    ['def name {:macro macro} name]))
 
 # Emit all #
 
@@ -107,15 +108,15 @@
              message
              (fmt message ;params)))
   (print) # flush the stream
-  (if context
+  (if (and (tuple? context) (not= (tuple/sourcemap context) [-1 -1]))
     (error (fmt "%s | In file %s near line and column %p"
                 msg source-name (tuple/sourcemap context)))
     (error (fmt "%s | In file %s" msg source-name))))
 
-(defmacro cerr [& args]
+(defmacro cerr [context message & params]
   # Call emiterror, but never tail call optimize this call (for a better stack
   # trace).
-  ['do (keep-syntax (dyn *macro-form*) [emiterror ;args]) nil])
+  ['do (keep-syntax (dyn *macro-form*) [emiterror context message ;params]) nil])
 
 # Macros #
 
@@ -299,6 +300,26 @@
       `Shows documentation for the given cppjan macro name.`
       [symbol]
       ['doc (get-macro-name symbol)])
+
+    (defn putn [& args]
+      (if (< (length args) 2)
+        (error "Expected 2 arguments")
+        (do
+          (var tbl (file-data))
+          (for i 0 (- (length args) 2)
+            (def key (args i))
+            (unless (get tbl key)
+              (put tbl key @{}))
+            (set tbl (get tbl key)))
+          (def before-last (args (- (length args) 2)))
+          (put tbl before-last (last args))
+          nil)))
+
+    (defn getn [& keys]
+      (var tbl (file-data))
+      (each key keys
+        (set tbl (get tbl key)))
+      tbl)
 
     # Dangerous Names #
     (def- janet-get get)

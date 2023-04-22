@@ -6,13 +6,23 @@
   (or (dyn *defjan-meta*) (setdyn *defjan-meta* @[])))
 
 (defdyn-local cppjan1 defjan-hooks :private `Hooks to call on each metadata array`)
-(defn defjan-hooks []
-  (or (dyn *defjan-hooks*) (setdyn *defjan-hooks* @[])))
-(defn defjan-add-hook [func]
-  (array/push (defjan-hooks) func))
+(defn- -defjan-hooks [] (or (dyn *defjan-hooks*) (setdyn *defjan-hooks* @[])))
 
-(defmacro defjan-hook [name args & body]
-  ~(,defjan-add-hook (fn ,name ,args ,;body)))
+(defn defjan-hooks
+  `Returns the array of defjan hooks. Returns nil outside of cppjan macros.`
+  []
+  (if (dyn *source-name*)
+    (-defjan-hooks)
+    (dyn *defjan-hooks*)))
+
+(defn- -defjan-add-hook [func]
+  (array/push (-defjan-hooks) func)
+  'skip)
+
+(c/defmacro defjan-add-hook
+  `Adds a defjan hook in this fiber.`
+  [func]
+  (-defjan-add-hook (eval func)))
 
 (def- basic-type?
   (to-set
@@ -195,8 +205,8 @@
 
   (def body (slice rest body-start))
 
-  (each hook (defjan-hooks)
-    (hook metadata))
+  (each hook (-defjan-hooks)
+    (hook metadata context))
 
   (array/push (defjan-meta) metadata)
 

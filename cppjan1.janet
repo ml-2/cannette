@@ -919,7 +919,11 @@
     :string (cerr context "Invalid toplevel form %p" expr)
     :number (cerr context "Invalid toplevel form %p" expr)
     :brackets (cerr context "Invalid toplevel form (tuple with brackets)")
-    :symbol (do (emit-indent) (emit-ident expr context) (cprint))
+    :symbol (do (if (= expr 'skip)
+                  nil
+                  (do (emit-indent)
+                      (emit-ident expr context)
+                      (cprint))))
     :call (do
             (def name (expr 0))
             (unless (symbol? name)
@@ -1035,6 +1039,7 @@
 (re-export *source-name*)
 (re-export *max-depth*)
 (re-export keep-sourcemap)
+(re-export cerr)
 (re-export emit-all)
 
 # Macros #

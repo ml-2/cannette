@@ -111,6 +111,7 @@
 (re-export *source-name*)
 (re-export *max-depth*)
 (re-export keep-sourcemap)
+(re-export cerr)
 (re-export emit-all)
 
 # Macros #
