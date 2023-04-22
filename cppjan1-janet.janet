@@ -115,11 +115,11 @@
                       (unless (and (implies optional? (= (length type) 4))
                                    (implies (not optional?) (= (length type) 3)))
                         (cerr context "Wrong number of arguments to :abstract %v" i))
-                      (def abstract-type (type 1))
-                      (def type-call (type 2))
+                      (def type-call (type 1))
                       (def type-call (if (symbol? type-call)
                                        ~(type ,[type-call])
                                          type-call))
+                      (def abstract-type (type 2))
                       (if optional?
                         (do
                           (def dflt (type 3))
@@ -137,7 +137,7 @@
                             elem type-call
                             ~(cast
                               ,type-call
-                              (janet_getabstract argv argc ,index ,abstract-type)))))))
+                              (janet_getabstract argv ,index ,abstract-type)))))))
                     (and optional? (basic-type? (type 0)))
                     (cerr context "Type %v cannot have a default value at index %v" (type 0) i)
                     # else
