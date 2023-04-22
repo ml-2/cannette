@@ -24,6 +24,10 @@
   [func]
   (-defjan-add-hook (eval func)))
 
+(c/defmacro project-name [name]
+  (c/put :project-name name)
+  'skip)
+
 (def- basic-type?
   (to-set
    [:number :array :tuple :table :struct :string :cstring
@@ -244,6 +248,49 @@
       (errorf "Unknown abstract type key %v" key)))
   (c/keep-sourcemap (dyn *macro-form*) ~(dict ,;result)))
 
-(c/defmacro module-entry [module-name]
+(c/defmacro module-entry [&opt module-name]
+  (def module-name (or module-name (c/get :project-name)))
+  (when (not module-name)
+    (c/cerr (dyn *macro-form*) "Expected a name for module-name or for the project-name to be set."))
   ~(defn [] JANET_MODULE_ENTRY [(def [JanetTable] (* env))]
-    (janet_cfuns env ,(string module-name) cfuns)))
+    (janet_cfuns env ,module-name cfuns)))
+
+(defn type-methods-hook
+  `Keep track of all the methods on each abstract type.`
+  [method-data context]
+  (def data (method-data :method))
+  (when data
+    (when (or (not (tuple? data)) (not= (length data) 2))
+      (c/cerr context "Expected a tuple of length 2 for :method metadata"))
+    (def type (data 0))
+    (when (c/getn :methods-map type :defined?)
+      (c/cerr context "Cannot define method after method array is already created"))
+    (c/putn :methods-map type (method-data :janet-name) method-data)))
+
+(c/defmacro methods-array
+  `Output a JanetMethod method array with all the methods for the given type.
+  The type-methods-hook must be enabled for this function to work (otherwise it
+  will output an empty array). Use (j/defjan-add-hook j/type-methods-hook) to
+  enable the type-methods-hook.`
+  [type &opt name]
+  (when (and (not name) (not (c/get :project-name)))
+    (c/cerr (dyn *macro-form*)
+            (string
+             `methods-array either requires a variable name to be passed as the second `
+             `argument or a project-name to be set, in which case the name will be `
+             `[project-name]_[type]_methods`)))
+  (when (c/getn :methods-map type :defined?)
+    (c/cerr (dyn *macro-form*) "Cannot output same methods array twice"))
+
+  (def result
+    ~(def [static const JanetMethod]
+       ([] ,(or name (symbol (string (c/get :project-name) "_" type "_methods"))))
+       ,(do
+          (def arys @[])
+          (eachp [_ data] (c/getn :methods-map type)
+            (def [_ name] (data :method))
+            (array/push arys (tuple/brackets (string name) (data :c-name))))
+          (array/push arys '[NULL NULL])
+          (tuple/brackets ;arys))))
+  (c/putn :methods-map type :defined? true)
+  result)
