@@ -58,10 +58,10 @@
 
 (defmacro defdyn-local
   `Generate a new dynamic :ns/name aliased to *ns/name* and *name*.`
-  [ns name doc]
+  [ns name & more]
   ~(upscope
-    (defdyn ,(symbol (string "*" ns "/" name "*")) ,doc)
-    (def ,(symbol (string "*" name "*")) ,doc ,(symbol (string "*" ns "/" name "*")))))
+    (defdyn ,(symbol (string "*" ns "/" name "*")) ,;more)
+    (def ,(symbol (string "*" name "*")) ,;more ,(symbol (string "*" ns "/" name "*")))))
 
 # Public dynamics #
 
@@ -73,8 +73,8 @@
 
 # Private dynamics #
 
-(defdyn-local cppjan current-depth
-  `How many recursive macro expansions to apply before giving up.`)
+(defdyn-local cppjan current-depth :private
+   `How many recursive macro expansions have been applied so far.`)
 (defn- depth [] (or (dyn *current-depth*) 0))
 (defn- inc-depth [] (setdyn *current-depth* (inc (depth))))
 (defn- set-depth [val] (setdyn *current-depth* val))
@@ -239,6 +239,10 @@
       `A prototype for code structs. It contains the :emit method.`
       {:emit ,emitter})
 
+    (defdyn-local cppjan file-data :private
+       `Metadata associated with the file for use with macros.`)
+    (defn file-data [] (or (dyn *file-data*) (setdyn *file-data* @{})))
+
     (defn apply-macros
       `Applies cppjan/xmljan macros to the given code and returns the result.
   Macro names are determined based on which bindings in the environment have the
@@ -262,7 +266,8 @@
          emitter
          :code (,am-inner cmacro exprs (or-syntax exprs nil))
          :source-name source-name
-         :filetype ,filetype-kw)))
+         :filetype ,filetype-kw
+         :data (file-data))))
 
     (defmacro defile
       `Takes a cppjan project symbol, a symbol or string representing a file
@@ -294,6 +299,12 @@
       `Shows documentation for the given cppjan macro name.`
       [symbol]
       ['doc (get-macro-name symbol)])
+
+    # Dangerous Names #
+    (def- janet-get get)
+    (def- janet-put put)
+    (defn get [key] (janet-get (file-data) key))
+    (defn put [key value] (janet-put (file-data) key value))
 
     (defmacro defmacro-
       `Private version of cppjan's defmacro.`

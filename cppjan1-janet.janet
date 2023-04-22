@@ -1,10 +1,18 @@
 (use ./cppjan1-lib)
 (import ./cppjan1 :as c)
 
-(defdyn-local cppjan1 janet-functions `Janet functions array`)
+(defdyn-local cppjan1 defjan-meta :private `Janet metadata array`)
+(defn- defjan-meta []
+  (or (dyn *defjan-meta*) (setdyn *defjan-meta* @[])))
 
-(defn janet-functions []
-  (or (dyn *janet-functions*) (setdyn *janet-functions* @[])))
+(defdyn-local cppjan1 defjan-hooks :private `Hooks to call on each metadata array`)
+(defn defjan-hooks []
+  (or (dyn *defjan-hooks*) (setdyn *defjan-hooks* @[])))
+(defn defjan-add-hook [func]
+  (array/push (defjan-hooks) func))
+
+(defmacro defjan-hook [name args & body]
+  ~(,defjan-add-hook (fn ,name ,args ,;body)))
 
 (def- basic-type?
   (to-set
@@ -48,6 +56,8 @@
   code that safely extracts those types from argv. Optional arguments must
   provide a default value, and a rest argument is untyped and ignored.`
   [args context]
+  (def names @[])
+
   (def extractor-calls @[])
 
   (var min 0)
@@ -58,6 +68,7 @@
 
   (forv i 0 (length args)
     (def elem (args i))
+    (array/push names elem)
     (cond
       (= elem '&)
       (do (set max -1)
@@ -143,42 +154,66 @@
                     ['janet-fixarity 'argc min]
                     ['janet-arity 'argc min max]))
 
-  [arity-call extractor-calls])
+  [names arity-call extractor-calls])
 
 (c/defmacro defjan
   `Generate a Janet function. All Janet bindings in a file are tracked and are
   inserted into the first call to the make-janet-cfuns macro. This will
   automatically insert an arity check and extract the values into variables
   based on the args list (which must be assigned special type keywords).`
-  [janet-name c-name doc args & body]
+  [janet-name c-name & rest]
   (def context (or-syntax (dyn *macro-form*) nil))
-  (def doc (string/format "%q\n\n%s" [janet-name ;args] doc))
-  (def val
-    {:c-name c-name
-     :janet-name janet-name
-     :doc doc})
-  (unless (string? doc)
-    (cerr "Expected string" context))
-  (array/push (janet-functions) val)
+  (def metadata
+    @{:c-name c-name
+      :janet-name janet-name})
+
+  (var args nil)
+  (var doc nil)
+  (var body-start 0)
+  (while (< body-start (length rest))
+    (def elem (rest body-start))
+    (++ body-start)
+    (cond
+      (tuple-b? elem)
+      (do (set args elem)
+          (break))
+      (keyword? elem)
+      (put metadata elem true)
+      (struct? elem)
+      (merge-into metadata elem)
+      (string? elem)
+      (set doc elem)
+      # else
+      (cerr context "Invalid metadata type %v in janet definition" (type elem))))
 
   (def args ((c/apply-macros (or (dyn c/*source-name*) ":unknown") args) :code))
 
-  (def [arity-call extractor-calls] (parse-janet-types args context))
+  (def [names arity-call extractor-calls] (parse-janet-types args context))
 
-  ~(defn [static Janet] ,c-name ,doc [(def [int32-t] argc) (def [Janet] (* argv))]
+  (set doc (string/format "%q\n\n%s" [janet-name ;names] (or doc "")))
+  (put metadata :doc doc)
+
+  (def body (slice rest body-start))
+
+  (each hook (defjan-hooks)
+    (hook metadata))
+
+  (array/push (defjan-meta) metadata)
+
+  ~(defn [static Janet] ,c-name ;,(if doc [doc] []) [(def [int32-t] argc) (def [Janet] (* argv))]
      ,arity-call
      ,;extractor-calls
      ,;body))
 
 (c/defmacro make-janet-cfuns []
   (def ary @[])
-  (each elem (janet-functions)
+  (each elem (defjan-meta)
     (array/push ary (tuple/brackets
                      (string (elem :janet-name))
                      (elem :c-name)
                      (elem :doc))))
   (array/push ary '[NULL NULL NULL])
-  (array/clear (janet-functions))
+  (array/clear (defjan-meta))
   ~(def [static const JanetReg] ([] cfuns) ,(tuple/brackets ;ary)))
 
 (def abstract-type-keys
@@ -198,3 +233,7 @@
     (unless (index-of key abstract-type-keys)
       (errorf "Unknown abstract type key %v" key)))
   (c/keep-sourcemap (dyn *macro-form*) ~(dict ,;result)))
+
+(c/defmacro module-entry [module-name]
+  ~(defn [] JANET_MODULE_ENTRY [(def [JanetTable] (* env))]
+    (janet_cfuns env ,(string module-name) cfuns)))

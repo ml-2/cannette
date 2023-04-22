@@ -2,18 +2,18 @@
 
 # Private dynamics #
 
-(defdyn-local cppjan indent `Current indent level for cppjan output.`)
+(defdyn-local cppjan indent :private `Current indent level for cppjan output.`)
 (defn- indent [] (or (dyn *indent*) (setdyn *indent* @"")))
 (defn- indent+ [] (buffer/push-string (indent) "  "))
 (defn- indent- [] (buffer/popn (indent) 2))
 
-(defdyn-local cppjan needs-backslash
+(defdyn-local cppjan needs-backslash :private
   `Indicate that newlines must be backslashed.`)
 (defn needs-backslash? [] (dyn *needs-backslash*))
 (defn needs-backslash [] (setdyn *needs-backslash* true))
 (defn no-needs-backslash [] (setdyn *needs-backslash* false))
 
-(defdyn-local cppjan line-length `Length of the current line`)
+(defdyn-local cppjan line-length :private  `Length of the current line`)
 (defn- line-length [] (or (dyn *line-length*) (setdyn *line-length* 0)))
 (defn- push-line-length [arg] (setdyn *line-length* (+ (line-length) (length arg))))
 (defn- new-line-length [] (setdyn *line-length* 0))
@@ -32,7 +32,7 @@
       (print " \\"))
     (print ;args)))
 
-(defdyn-local cppjan needs-space
+(defdyn-local cppjan needs-space :private
   `Used to temporarily store that a space will be needed if more is printed.`)
 (defn- needs-space [] (setdyn *needs-space* true))
 (defn- no-needs-space [] (setdyn *needs-space* false))
