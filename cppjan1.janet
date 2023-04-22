@@ -599,8 +599,23 @@
             (def name (expr 0))
             (cond
               (not (symbol? name))
-              (do (emit-expr name (or-syntax name context))
-                  (emit-funargs expr context))
+              (if (tuple-b? name)
+                (do
+                  (when (not= (length name) 1)
+                    (cerr context "Expected an index for array access"))
+                  (when (not= (length expr) 2)
+                    (cerr context "Expected exactly one argument to array access"))
+                  (when with-parens?
+                    (cprin "("))
+                  (emit-expr (expr 1) (or-syntax (expr 1) context))
+                  (cprin "[")
+                  (emit-expr (name 0) (or-syntax (name 0) name context))
+                  (cprin "]")
+                  (when with-parens?
+                    (cprin ")")))
+                (do
+                  (emit-expr name (or-syntax name context))
+                  (emit-funargs expr context)))
               (and (peg/match pointers-op-grammar name)
                    (implies (= name '*) (= (length expr) 2)))
               (if (not= (length expr) 2)
