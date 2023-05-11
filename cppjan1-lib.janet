@@ -1,4 +1,4 @@
-# Syntax #
+# misclib #
 
 (defn tuple-b? [t]
   (and (tuple? t) (= (tuple/type t) :brackets)))
@@ -21,19 +21,10 @@
     (tuple/setmap result ;(tuple/sourcemap original)))
   result)
 
-# Logic #
-
-(defmacro implies [b0 b1]
-  ~(or (not ,b0) ,b1))
-
-(defn iff [b0 b1]
-  (and (implies b0 b1)
-       (implies b1 b0)))
-
-(defn xor [b0 b1]
-  (not (iff b0 b1)))
-
-# Strings and collections #
+(defmacro implies [b0 b1 & rest]
+  (if (empty? rest)
+    ~(or (not ,b0) ,b1)
+    ~(or (not ,b0) (implies ,b1 ,;rest))))
 
 (def rep string/replace-all)
 (def fmt string/format)
@@ -53,8 +44,6 @@
   (each val ary
     (set (result val) true))
   result)
-
-# Dynamics #
 
 (defmacro defdyn-local
   `Generate a new dynamic :ns/name aliased to *ns/name* and *name*.`
