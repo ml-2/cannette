@@ -1,20 +1,20 @@
-(use ./cppjan1-lib)
+(use ./lib)
 
 # Private dynamics #
 
-(defdyn-local cppjan indent :private `Current indent level for cppjan output.`)
+(defdyn-local cannette indent :private `Current indent level for cannette output.`)
 (def- indent-spaces "  ")
 (defn- indent [] (or (dyn *indent*) (setdyn *indent* @"")))
 (defn- indent+ [] (buffer/push-string (indent) indent-spaces))
 (defn- indent- [] (buffer/popn (indent) (length indent-spaces)))
 
-(defdyn-local cppjan needs-backslash :private
+(defdyn-local cannette needs-backslash :private
   `Indicate that newlines must be backslashed.`)
 (defn needs-backslash? [] (dyn *needs-backslash*))
 (defn needs-backslash [] (setdyn *needs-backslash* true))
 (defn no-needs-backslash [] (setdyn *needs-backslash* false))
 
-(defdyn-local cppjan line-length :private  `Length of the current line`)
+(defdyn-local cannette line-length :private  `Length of the current line`)
 (defn- line-length [] (or (dyn *line-length*) (setdyn *line-length* 0)))
 (defn- push-line-length [arg] (setdyn *line-length* (+ (line-length) (length arg))))
 (defn- new-line-length [] (setdyn *line-length* 0))
@@ -33,7 +33,7 @@
       (print " \\"))
     (print ;args)))
 
-(defdyn-local cppjan needs-space :private
+(defdyn-local cannette needs-space :private
   `Used to temporarily store that a space will be needed if more is printed.`)
 (defn- needs-space [] (setdyn *needs-space* true))
 (defn- no-needs-space [] (setdyn *needs-space* false))
@@ -102,7 +102,7 @@
     :number [:number expr]
     :tuple (if (empty? expr)
              (if (tuple-p? expr)
-               (cerr context "Empty call is invalid in cppjan code")
+               (cerr context "Empty call is invalid in cannette code")
                [:brackets expr])
              (if (tuple-p? expr)
                [:call expr]
@@ -150,50 +150,50 @@
   (when (= (tuple/type expr) :brackets)
     (break [:array-val expr]))
   (when (empty? expr)
-    (cerr context "Empty tuple is invalid in cppjan code"))
+    (cerr context "Empty tuple is invalid in cannette code"))
   (case (type (expr 0))
-    :nil (cerr context "Nil values are invalid in cppjan code")
+    :nil (cerr context "Nil values are invalid in cannette code")
     :boolean (keep-sourcemap expr [:call (tuple (symbol (expr 0)) ;(tuple/slice expr 1))])
     :number (cerr context "Numbers cannot be used as function calls")
     :tuple (if (= (tuple/type (expr 0)) :brackets)
              [:array-access expr]
              [:nested-call expr])
-    :array (cerr context "Janet arrays are invalid in cppjan code")
-    :table (cerr context "Janet tables are invalid in cppjan code")
-    :struct (cerr context "Structs are invalid in cppjan code")
+    :array (cerr context "Janet arrays are invalid in cannette code")
+    :table (cerr context "Janet tables are invalid in cannette code")
+    :struct (cerr context "Structs are invalid in cannette code")
     :string (if (= (length expr) 2)
               (keep-sourcemap expr [:string-operator (expr 1)])
               (cerr context "Wrong number of arguments for string operator"))
-    :buffer (cerr context "Buffers are invalid in cppjan code")
+    :buffer (cerr context "Buffers are invalid in cannette code")
     :symbol (identify-symbol-form expr context)
-    :keyword (cerr context "Keywords are invalid in cppjan code")
-    :function (cerr context "Functions are invalid in cppjan code")
-    :cfunction (cerr context "Functions are invalid in cppjan code")
-    :fiber (cerr context "Fibers are invalid in cppjan code")
+    :keyword (cerr context "Keywords are invalid in cannette code")
+    :function (cerr context "Functions are invalid in cannette code")
+    :cfunction (cerr context "Functions are invalid in cannette code")
+    :fiber (cerr context "Fibers are invalid in cannette code")
     :core/s64 (cerr context "Signed 64-bit ints cannot be used as function calls")
     :core/u64 (cerr context "Unsigned 64-bit ints cannot be used as function calls")
     (cerr context "Unknown type of janet value %v" (type expr))))
 
 (defn- identify [expr context]
   (case (type expr)
-    :nil (cerr context "Nil values are invalid in cppjan code")
+    :nil (cerr context "Nil values are invalid in cannette code")
     :boolean [:symbol (symbol expr)]
     :number (if (int? expr)
               [:number expr]
               (cerr context
-                    (string "Bare floats are invalid in cppjan code."
+                    (string "Bare floats are invalid in cannette code."
                             "Use a special form like (num/d %v) instead.") expr))
     :tuple (identify-tuple expr context)
-    :array (cerr context "Janet arrays are invalid in cppjan code")
-    :table (cerr context "Janet tables are invalid in cppjan code")
-    :struct (cerr context "Structs are invalid in cppjan code")
+    :array (cerr context "Janet arrays are invalid in cannette code")
+    :table (cerr context "Janet tables are invalid in cannette code")
+    :struct (cerr context "Structs are invalid in cannette code")
     :string [:string expr]
-    :buffer (cerr context "Buffers are invalid in cppjan code")
+    :buffer (cerr context "Buffers are invalid in cannette code")
     :symbol [:symbol expr]
-    :keyword (cerr context "Keywords are invalid in cppjan code")
-    :function (cerr context "Functions are invalid in cppjan code")
-    :cfunction (cerr context "Functions are invalid in cppjan code")
-    :fiber (cerr context "Fibers are invalid in cppjan code")
+    :keyword (cerr context "Keywords are invalid in cannette code")
+    :function (cerr context "Functions are invalid in cannette code")
+    :cfunction (cerr context "Functions are invalid in cannette code")
+    :fiber (cerr context "Fibers are invalid in cannette code")
     :core/s64 [:int expr]
     :core/u64 [:int expr]
     (cerr context "Unknown type of janet value %v" (type expr))))
@@ -353,7 +353,7 @@
               (cerr context "Unknown class member form")))
     (cerr
      context
-     "Unknown normalized type %p - this is a bug in cppjan" (normalized 0))))
+     "Unknown normalized type %p - this is a bug in cannette" (normalized 0))))
 
 (defn- emit-class [spec context]
   (when (< (length spec) 3)
@@ -558,7 +558,7 @@
                 (cerr context "Unknown declarator name %p" name))))
      (cerr
       context
-      "Unknown normalized type %p - this is a bug in cppjan" (normalized 0))))
+      "Unknown normalized type %p - this is a bug in cannette" (normalized 0))))
 
 (def- uops
   '{+ "+" - "-" * "*" & "&" not "!" bnot "~" ++ "++" -- "--"})
@@ -801,7 +801,7 @@
                       (emit-funargs expr context)))))))
     (cerr
      context
-     "Unknown normalized type %p - this is a bug in cppjan" (normalized 0))))
+     "Unknown normalized type %p - this is a bug in cannette" (normalized 0))))
 
 (defn- emit-cond [expr context]
   (when (< (length expr) 2)
@@ -949,7 +949,7 @@
                     (cprint ";")))))
     (cerr
      context
-     "Unknown normalized type %p - this is a bug in cppjan" (normalized 0))))
+     "Unknown normalized type %p - this is a bug in cannette" (normalized 0))))
 
 (varfn emit-statement-nonest-block [expr context]
   # Same as emit-statement, but does not emit curly braces if expression is a do
@@ -1106,7 +1106,7 @@
               ))
     (cerr
      context
-     "Unknown normalized type %p - this is a bug in cppjan" (normalized 0))))
+     "Unknown normalized type %p - this is a bug in cannette" (normalized 0))))
 
 (defn emit-code
   [code]
@@ -1190,4 +1190,4 @@
 # Macros #
 
 # Must be at end since it redefines important names like defmacro
-(def-macros :cppjan/macro :cpp emit)
+(def-macros :cannette/macro :cpp emit)

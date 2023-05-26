@@ -1,4 +1,4 @@
-(import /xmljan1 :as "x")
+(import cannette/xml :as "x")
 
 (def name (dyn *current-file*))
 

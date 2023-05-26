@@ -54,15 +54,15 @@
 
 # Public dynamics #
 
-(defdyn-local cppjan source-name
+(defdyn-local cannette source-name
   `Name of the source location of the file being generated.`)
 
-(defdyn-local cppjan max-depth
+(defdyn-local cannette max-depth
   `How many recursive macro expansions to apply before giving up.`)
 
 # Private dynamics #
 
-(defdyn-local cppjan current-depth :private
+(defdyn-local cannette current-depth :private
    `How many recursive macro expansions have been applied so far.`)
 (defn- depth [] (or (dyn *current-depth*) 0))
 (defn- inc-depth [] (setdyn *current-depth* (inc (depth))))
@@ -212,7 +212,7 @@
       (set (project name) expanded-code))
 
     (defn get-macro-name
-      `Resolves the cppjan macro name.`
+      `Resolves the cannette macro name.`
       [sym]
       (def parts (string/split "/" sym))
       (symbol (string/join (array/concat
@@ -220,7 +220,7 @@
                             @[,macro-kw (last parts)]) "/")))
 
     (defn get-macro
-      `Returns the cppjan macro value if it exists, nil otherwise.`
+      `Returns the cannette macro value if it exists, nil otherwise.`
       [sym]
       (def val (dyn (get-macro-name sym)))
       (if val (val :value) nil))
@@ -229,7 +229,7 @@
       `A prototype for code structs. It contains the :emit method.`
       {:emit ,emitter})
 
-    (defdyn-local cppjan file-data :private
+    (defdyn-local cannette file-data :private
        `Metadata associated with the file for use with macros.`)
     (defn file-data [] (or (dyn *file-data*) (setdyn *file-data* @{})))
 
@@ -246,9 +246,9 @@
       (,am-inner cmacro exprs context))
 
     (defn apply-macros-to-file
-      `Applies cppjan/xmljan macros to the given code and returns the result.
+      `Applies cannette/xmljan macros to the given code and returns the result.
   Macro names are determined based on which bindings in the environment have the
-  :cppjan/macro or :xmljan metadata set to true. A source-name string must be
+  :cannette/macro or :xmljan metadata set to true. A source-name string must be
   given for error messages to be able to properly display the error's source
   location.
 
@@ -265,11 +265,11 @@
          :data (file-data))))
 
     (defmacro defile
-      `Takes a cppjan project symbol, a symbol or string representing a file
+      `Takes a cannette project symbol, a symbol or string representing a file
   name in the project, optional definition metadata like in def, and finally
   code. The metadata is the same as what is allowed inside def statements.
 
-  Runs cppjan macros on the code and sets the result into the project for the
+  Runs cannette macros on the code and sets the result into the project for the
   given name (as a string). If the name was a symbol, also defines that symbol
   to the expanded code.`
       [project name & more]
@@ -286,12 +286,12 @@
 
     (defn enable-macro
       `Sym must be a symbol which is defined as a function or macro in the
-  environment. Enables this macro to be used as a cppjan macro.`
+  environment. Enables this macro to be used as a cannette macro.`
       [sym]
       (put (curenv) (symbol (string ,macro-kw "/" sym)) @{:value ((dyn sym) :value)}))
 
     (defmacro doc
-      `Shows documentation for the given cppjan macro name.`
+      `Shows documentation for the given cannette macro name.`
       [symbol]
       ['doc (get-macro-name symbol)])
 
@@ -322,13 +322,13 @@
     (defn put [key value] (janet-put (file-data) key value))
 
     (defmacro defmacro-
-      `Private version of cppjan's defmacro.`
+      `Private version of cannette's defmacro.`
       [name & more]
       (apply defn (symbol (string ,macro-kw "/" name)) :macro :private more))
 
     (defmacro defmacro
-      `Same as the core defmacro, except that the :cppjan/macro or :xmljan/macro
+      `Same as the core defmacro, except that the :cannette/macro or :xmljan/macro
   metadata is also set to true. This enables this macro to be used in
-  cppjan/xmljan code.`
+  cannette/xmljan code.`
       [name & more]
       (apply defn (symbol (string ,macro-kw "/" name)) :macro more))))

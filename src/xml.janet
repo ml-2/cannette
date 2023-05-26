@@ -1,8 +1,8 @@
-(use ./cppjan1-lib)
+(use ./lib)
 
 # Private dynamics #
 
-(defdyn-local xmljan indent `Current indent level for xmljan output.`)
+(defdyn-local cannette/xml indent `Current indent level for cannette/xml output.`)
 (defn- indent [] (or (dyn *indent*) (setdyn *indent* @"")))
 (defn- indent+ [] (buffer/push-string (indent) "  "))
 (defn- indent- [] (buffer/popn (indent) 2))
@@ -117,4 +117,4 @@
 # Macros #
 
 # Must be at end since it redefines important names like defmacro
-(def-macros :xmljan/macro :xml emit)
+(def-macros :cannette/xml/macro :xml emit)

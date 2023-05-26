@@ -1,5 +1,5 @@
-(use ./cppjan1-lib)
-(import ./cppjan1 :as c)
+(use ./lib)
+(import ./c :as c)
 
 (each sym ['-> '->> 'when]
   (c/enable-macro sym))

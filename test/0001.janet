@@ -1,4 +1,4 @@
-(import /cppjan1 :as "c")
+(import cannette :as "c")
 
 (c/defmacro include-all-splice [& names]
   (def stx (dyn *macro-form*))

@@ -1,20 +1,20 @@
-(use ./cppjan1-lib)
-(import ./cppjan1 :as c)
+(use ./lib)
+(import ./c :as c)
 
-(defdyn-local cppjan1 defjan-meta :private `Janet metadata array`)
+(defdyn-local cannette defjan-meta :private `Janet metadata array`)
 (defn- defjan-meta []
   (when (not (c/get *defjan-meta*))
     (c/put *defjan-meta* @[]))
   (c/get *defjan-meta*))
 
-(defdyn-local cppjan1 abstract-types :private `Abstract types`)
+(defdyn-local cannette abstract-types :private `Abstract types`)
 
 
-(defdyn-local cppjan1 defjan-hooks :private `Hooks to call on each metadata array`)
+(defdyn-local cannette defjan-hooks :private `Hooks to call on each metadata array`)
 (defn- -defjan-hooks [] (or (dyn *defjan-hooks*) (setdyn *defjan-hooks* @[])))
 
 (defn defjan-hooks
-  `Returns the array of defjan hooks. Returns nil outside of cppjan macros.`
+  `Returns the array of defjan hooks. Returns nil outside of cannette macros.`
   []
   (if (dyn *source-name*)
     (-defjan-hooks)
@@ -71,7 +71,7 @@
     :dictionary (type [JanetDictView] _)})
 
 (defn- parse-janet-types
-  `Given a tuple of names followed by special type keywords, generates cppjan
+  `Given a tuple of names followed by special type keywords, generates cannette
   code that safely extracts those types from argv. Optional arguments must
   provide a default value, and a rest argument is untyped and ignored.`
   [args context]
@@ -313,7 +313,7 @@
   (c/putn *abstract-types*
      type-name @{:type-name type-name :c-type c-type :var-name name})
   ~(def [static const JanetAbstractType] ,name
-     (,cppjan/macro/abstract-type ,struct)))
+     (,cannette/macro/abstract-type ,struct)))
 
 (defn type-methods-hook
   `Keep track of all the methods on each abstract type.`
