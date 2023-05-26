@@ -102,7 +102,7 @@
     :number [:number expr]
     :tuple (if (empty? expr)
              (if (tuple-p? expr)
-               (cerr context "Empty call is not allowed")
+               (cerr context "Empty call is invalid in cppjan code")
                [:brackets expr])
              (if (tuple-p? expr)
                [:call expr]
@@ -110,6 +110,104 @@
     :string [:string expr]
     :symbol [:symbol expr]
     (cerr context (fmt "Invalid expression %p" expr))))
+
+(def- special-forms
+  (to-set
+   '[if cond while switch for
+     break continue label fallthrough
+     def defn set type
+     <> sizeof decltype new cast delete
+     num/i num/l num/ll num/z
+     num/f num/d num/f16 num/f32 num/f64 num/f128 num/bf16
+     + - * / % and or band bor bxor
+     << >> = not= > < >= <= <=>
+     . .-> .* .->*
+     & not bnot ++ --
+     string
+     class struct enum union
+     decl ... fn operator
+     namespace using constructor
+     include define ifdef ifndef
+     upscope do comment
+     name statement
+     unquote quote quasiquote splice short-fn
+     ! @ @c @n
+    ]))
+
+(defn- identify-symbol-form [expr context]
+  (def sym (expr 0))
+  (cond
+    (special-forms sym)
+    (keep-sourcemap expr [(keyword sym) (tuple ;(tuple/slice expr 1))])
+    (peg/match pointers-op-grammar sym)
+    [:pointers expr]
+    (peg/match method-call-grammar sym)
+    [:method-call expr]
+    #else
+    [:call expr]))
+
+(defn- identify-tuple [expr context]
+  (when (= (tuple/type expr) :brackets)
+    (break [:array-val expr]))
+  (when (empty? expr)
+    (cerr context "Empty tuple is invalid in cppjan code"))
+  (case (type (expr 0))
+    :nil (cerr context "Nil values are invalid in cppjan code")
+    :boolean (keep-sourcemap expr [:call (tuple (symbol (expr 0)) ;(tuple/slice expr 1))])
+    :number (cerr context "Numbers cannot be used as function calls")
+    :tuple (if (= (tuple/type (expr 0)) :brackets)
+             [:array-access expr]
+             [:nested-call expr])
+    :array (cerr context "Janet arrays are invalid in cppjan code")
+    :table (cerr context "Janet tables are invalid in cppjan code")
+    :struct (cerr context "Structs are invalid in cppjan code")
+    :string (if (= (length expr) 2)
+              (keep-sourcemap expr [:string-operator (expr 1)])
+              (cerr context "Wrong number of arguments for string operator"))
+    :buffer (cerr context "Buffers are invalid in cppjan code")
+    :symbol (identify-symbol-form expr context)
+    :keyword (cerr context "Keywords are invalid in cppjan code")
+    :function (cerr context "Functions are invalid in cppjan code")
+    :cfunction (cerr context "Functions are invalid in cppjan code")
+    :fiber (cerr context "Fibers are invalid in cppjan code")
+    :core/s64 (cerr context "Signed 64-bit ints cannot be used as function calls")
+    :core/u64 (cerr context "Unsigned 64-bit ints cannot be used as function calls")
+    (cerr context "Unknown type of janet value %v" (type expr))))
+
+(defn- identify [expr context]
+  (case (type expr)
+    :nil (cerr context "Nil values are invalid in cppjan code")
+    :boolean [:symbol (symbol expr)]
+    :number (if (int? expr)
+              [:number expr]
+              (cerr context
+                    (string "Bare floats are invalid in cppjan code."
+                            "Use a special form like (num/d %v) instead.") expr))
+    :tuple (identify-tuple expr context)
+    :array (cerr context "Janet arrays are invalid in cppjan code")
+    :table (cerr context "Janet tables are invalid in cppjan code")
+    :struct (cerr context "Structs are invalid in cppjan code")
+    :string [:string expr]
+    :buffer (cerr context "Buffers are invalid in cppjan code")
+    :symbol [:symbol expr]
+    :keyword (cerr context "Keywords are invalid in cppjan code")
+    :function (cerr context "Functions are invalid in cppjan code")
+    :cfunction (cerr context "Functions are invalid in cppjan code")
+    :fiber (cerr context "Fibers are invalid in cppjan code")
+    :core/s64 [:int expr]
+    :core/u64 [:int expr]
+    (cerr context "Unknown type of janet value %v" (type expr))))
+
+(defn- dispatch [on expr context]
+  # TODO
+  # on is a pair containing the result of the identify function and a keyword
+  # such as :toplevel, :decl, :spec, etc.
+  # TODO: Now would be a good time to think about types. We could change
+  # declarators to be generic types instead, that would work. Specifiers could
+  # be optionally generic types, taking any number of other specifiers and at
+  # most one declarator. Specifiers inside and outside a declarator would be
+  # combined.
+  )
 
 (defn- as-symbol [expr]
   (case (type expr)
@@ -463,7 +561,7 @@
       "Unknown normalized type %p - this is a bug in cppjan" (normalized 0))))
 
 (def- uops
-  '{+ "+" - "-" * "*" & "&" not "!" bnot "~" ++ "++" -- "--" quote "*" quasiquote "&"})
+  '{+ "+" - "-" * "*" & "&" not "!" bnot "~" ++ "++" -- "--"})
 
 (def- binops
   '{+ "+" - "-" * "*" / "/" % "%"

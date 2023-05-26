@@ -276,7 +276,9 @@
   (when (not module-name)
     (c/cerr (dyn *macro-form*) "Expected a name for module-name or for the project-name to be set."))
   ~(defn [] JANET_MODULE_ENTRY [(def [JanetTable] (* env))]
-    (janet_cfuns env ,(string module-name) cfuns)))
+     (janet_cfuns env ,(string module-name) cfuns)
+     # TODO: register abstract types
+     ))
 
 
 (defn- typed-name [type auto-name given-name]
