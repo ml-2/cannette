@@ -123,6 +123,7 @@
      << >> = not= > < >= <= <=>
      . .-> .* .->*
      & not bnot ++ --
+     += -= *= /= band= bor= bxor=
      string
      class struct enum union
      decl ... fn operator
@@ -567,7 +568,8 @@
   '{+ "+" - "-" * "*" / "/" % "%"
     and "&&" or "||" band "&" bor "|" bxor "^"
     << "<<" >> ">>" = "==" not= "!=" > ">" < "<" >= ">=" <= "<=" <=> "<=>"
-   . "." .-> "->" .* ".*" .->* ".->*"})
+    . "." .-> "->" .* ".*" .->* ".->*"
+    += "+=" -= "-=" *= "*=" /= "/=" band= "&=" bor= "|=" bxor= "^="})
 (def- binops-nospace {'. true '.-> true})
 
 (defn- emit-number [expr context]
