@@ -1120,6 +1120,7 @@
   (with-dyns [*source-name* (file-data :source-name)
               *out* (or out (dyn out))]
     (cprint "/* " (dyn *source-name*) " */")
+    (cprint "/* THIS FILE WAS AUTOMATICALLY GENERATED. DO NOT EDIT. */")
     (emit-code (file-data :code))))
 
 (defn emit-to-string
