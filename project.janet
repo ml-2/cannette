@@ -4,11 +4,12 @@
 
 (declare-source
  :source [
-   "src/init.janet"
    "src/c.janet"
-   "src/xml.janet"
-   "src/lib.janet"
+   "src/init.janet"
    "src/janet.janet"
+   "src/lib.janet"
+   "src/macros.janet"
+   "src/xml.janet"
  ]
  :prefix "cannette")
 
