@@ -14,6 +14,7 @@
 
 (def basic-generate-include `
 /* test/0001.janet */
+/* THIS FILE WAS AUTOMATICALLY GENERATED. DO NOT EDIT. */
 #include <stdlib.h>
 #include "0001.h"
 
@@ -37,6 +38,7 @@
  (=
   `
 /* test/0001.janet */
+/* THIS FILE WAS AUTOMATICALLY GENERATED. DO NOT EDIT. */
 /** Convert a git error into a janet panic. **/
 static void throw_error(int error) {
   git_error *const e = git_error_last();

@@ -387,6 +387,41 @@
     (emit-block-end)
     ))
 
+(defn- emit-enum-member [spec context]
+  (cond (symbol? spec)
+        (do (emit-indent)
+            (emit-ident spec context)
+            (cprint ","))
+        (and (tuple-p? spec) (= (length spec) 3)
+             (= (spec 0) 'set) (symbol? (spec 1)))
+        (do (emit-indent)
+            (emit-ident (spec 1) context)
+            (cprin " = ")
+            (emit-expr (spec 2) (or-syntax (spec 2) context))
+            (cprint ","))
+        # else
+        (cerr context "Invalid enum member")))
+
+(defn- emit-enum [spec context]
+  (when (< (length spec) 3)
+    (cerr context "Expected at least 2 arguments to enum"))
+  (def name (spec 1))
+  (def info (spec 2))
+  (cprin (spec 0) " ")
+  (emit-ident name context)
+
+  (unless (tuple-b? info)
+    (cerr (or-syntax info context) "Expected square brackets"))
+
+  # TODO: Support info
+
+  (unless (= (length spec) 3)
+    (cprin " ")
+    (emit-block-start)
+    (for i 3 (length spec)
+      (emit-enum-member (spec i) (or-syntax (spec i) context)))
+    (emit-block-end)))
+
 (defn- emit-specifier [spec context]
   # TODO: Use normalize
   (cond
@@ -397,7 +432,7 @@
       :<> (emit-template-type spec context)
       :class (emit-class spec context)
       :struct (emit-class spec context)
-      :enum nil # TODO
+      :enum (emit-enum spec context)
       :union nil # TODO
       :decltype nil # TODO
       (cerr

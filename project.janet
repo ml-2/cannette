@@ -1,6 +1,9 @@
 (declare-project
  :name "cannette"
- :description "C and C++ code generator")
+ :description "C and C++ code generator"
+ :dev-dependencies [
+    {:url "https://github.com/ianthehenry/judge.git"
+     :tag "v2.5.0"}])
 
 (declare-source
  :source [
