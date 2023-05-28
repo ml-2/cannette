@@ -86,7 +86,7 @@
     (def file-table (project file-name))
 
     (with
-     [file (file/open file-name :w)]
+     [file (file/open file-name :wn)]
      (:emit file-table file))))
 
 # Errors #
